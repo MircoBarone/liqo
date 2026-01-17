@@ -16,5 +16,5 @@ package tunnel
 
 const (
 	// TunnelInterfaceName is the name of the tunnel interface used by the Gateway to reach the remote cluster.
-	TunnelInterfaceName = "liqo-tunnel"
+	TunnelInterfaceName = "liqo-test"
 )
