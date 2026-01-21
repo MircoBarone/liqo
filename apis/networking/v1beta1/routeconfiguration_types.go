@@ -51,6 +51,20 @@ const (
 	NowhereScope Scope = "nowhere"
 )
 
+// NextHop is a single next-hop in a multipath route (ECMP).
+type NextHop struct {
+	// Gw is the gateway (next hop) IP address.
+	// +kubebuilder:validation:Required
+	Gw IP `json:"gw"`
+
+	// Weight is the weight of this next-hop for load balancing.
+	// Higher weight means more traffic. Default is 1.
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=256
+	// +kubebuilder:default=1
+	Weight *int `json:"weight,omitempty"`
+}
+
 // Route is the route of the RouteConfiguration.
 type Route struct {
 	// Dst is the destination of the RouteConfiguration.
@@ -58,7 +72,15 @@ type Route struct {
 	// Src is the source of the RouteConfiguration.
 	Src *IP `json:"src,omitempty"`
 	// Gw is the gateway of the RouteConfiguration.
+	//// DEPRECATED: Use NextHops for ECMP support. If both Gw and NextHops are specified, NextHops takes precedence.
+	// +optional
 	Gw *IP `json:"gw,omitempty"`
+	// NextHops is the list of next-hops for ECMP (Equal-Cost Multi-Path) routing.
+	// If specified, this takes precedence over the Gw field.
+	// +optional
+	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MaxItems=32
+	NextHops []NextHop `json:"nextHops,omitempty"`
 	// Dev is the device of the RouteConfiguration.
 	Dev *string `json:"dev,omitempty"`
 	// Onlink enables the onlink falg inside the route.

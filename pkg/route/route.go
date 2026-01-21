@@ -49,6 +49,7 @@ func EnsureRoutesPresence(routes []networkingv1beta1.Route, tableID uint32) erro
 	return nil
 }
 
+
 // EnsureRoutesAbsence ensures the absence of the given routes.
 func EnsureRoutesAbsence(routes []networkingv1beta1.Route, tableID uint32) error {
 	for i := range routes {
@@ -104,6 +105,31 @@ func ExistsRoute(route *networkingv1beta1.Route, tableID uint32) (*netlink.Route
 
 // IsEqualRoute checks if the two routes are equal.
 func IsEqualRoute(route1, route2 *netlink.Route) bool {
+    multipath1 := len(route1.MultiPath)
+	multipath2 := len(route2.MultiPath)
+
+	if multipath1 > 0 && multipath2>0{
+		if(multipath1!=multipath2){
+			return false
+	    }
+
+        for _, nh1 := range route1.MultiPath {
+			found := false
+			for _, nh2 := range route2.MultiPath {
+				if nh1.Gw.String() == nh2.Gw.String() && nh1.Hops == nh2.Hops {
+					found = true
+					break
+				}
+			}
+			if !found {
+				return false
+			}
+		}
+		return true
+	
+
+	}
+	if multipath1==0 && multipath2==0 {
 	if route1.Dst != nil && route2.Dst != nil && route1.Dst.String() != route2.Dst.String() {
 		return false
 	}
@@ -120,6 +146,12 @@ func IsEqualRoute(route1, route2 *netlink.Route) bool {
 		return false
 	}
 	return true
+    }
+
+	
+	return false
+	
+
 }
 
 // CleanRoutes cleans the routes that are not contained in the given route list.
@@ -171,22 +203,6 @@ func forgeNetlinkRoute(route *networkingv1beta1.Route, tableID uint32) (*netlink
 		src = net.ParseIP(route.Src.String())
 	}
 
-	if route.Gw != nil {
-		gw = net.ParseIP(route.Gw.String())
-	}
-
-	if route.Dev != nil {
-		link, err := netlink.LinkByName(*route.Dev)
-		if err != nil {
-			return nil, err
-		}
-		linkIndex = link.Attrs().Index
-	}
-
-	if route.Onlink != nil && *route.Onlink {
-		flags |= int(netlink.FLAG_ONLINK)
-	}
-
 	if route.Scope != nil {
 		switch *route.Scope {
 		case networkingv1beta1.GlobalScope:
@@ -203,6 +219,60 @@ func forgeNetlinkRoute(route *networkingv1beta1.Route, tableID uint32) (*netlink
 		}
 	}
 
+	if len(route.NextHops) > 0 {
+		multiPath := make([]*netlink.NexthopInfo, len(route.NextHops))
+
+		for i, nh := range route.NextHops {
+
+			nextHopGw := net.ParseIP(nh.Gw.String())
+			weight := 0 //default value
+			if nh.Weight != nil {
+				weight = *nh.Weight -1
+			}
+            
+			 routes, err := netlink.RouteGet(nextHopGw)
+        	if err != nil || len(routes) == 0 {
+            return nil, fmt.Errorf("cannot infer route for next-hop")
+            }
+
+			r := routes[0] 
+            if r.LinkIndex == 0 {
+            return nil, fmt.Errorf("inferred route has no link index")
+            }
+            
+			multiPath[i] = &netlink.NexthopInfo{
+            Gw:        nextHopGw,
+            LinkIndex: r.LinkIndex,
+            Hops:      weight,
+        }
+    }
+
+		// Return route ECMP
+		return &netlink.Route{
+			Dst:       dst,
+			Src:       src,
+			MultiPath: multiPath,
+			Table:     int(tableID),
+			Scope:     scope,
+		}, nil
+	}
+
+	if route.Gw != nil {
+		gw = net.ParseIP(route.Gw.String())
+	}
+
+	if route.Dev != nil {
+		link, err := netlink.LinkByName(*route.Dev)
+		if err != nil {
+			return nil, err
+		}
+		linkIndex = link.Attrs().Index
+	}
+
+	if route.Onlink != nil && *route.Onlink {
+		flags |= int(netlink.FLAG_ONLINK)
+	}
+
 	return &netlink.Route{
 		Dst:       dst,
 		Gw:        gw,
@@ -212,4 +282,5 @@ func forgeNetlinkRoute(route *networkingv1beta1.Route, tableID uint32) (*netlink
 		Flags:     flags,
 		Scope:     scope,
 	}, nil
+
 }

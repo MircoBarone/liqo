@@ -90,9 +90,38 @@ spec:
                                 format: cidr
                                 type: string
                               gw:
-                                description: Gw is the gateway of the RouteConfiguration.
+                                description: |-
+                                  Gw is the gateway of the RouteConfiguration.
+                                  // DEPRECATED: Use NextHops for ECMP support. If both Gw and NextHops are specified, NextHops takes precedence.
                                 format: ipv4
                                 type: string
+                              nextHops:
+                                description: |-
+                                  NextHops is the list of next-hops for ECMP (Equal-Cost Multi-Path) routing.
+                                  If specified, this takes precedence over the Gw field.
+                                items:
+                                  description: NextHop is a single next-hop in a multipath
+                                    route (ECMP).
+                                  properties:
+                                    gw:
+                                      description: Gw is the gateway (next hop) IP
+                                        address.
+                                      format: ipv4
+                                      type: string
+                                    weight:
+                                      default: 1
+                                      description: |-
+                                        Weight is the weight of this next-hop for load balancing.
+                                        Higher weight means more traffic. Default is 1.
+                                      maximum: 256
+                                      minimum: 1
+                                      type: integer
+                                  required:
+                                  - gw
+                                  type: object
+                                maxItems: 32
+                                minItems: 1
+                                type: array
                               onlink:
                                 description: Onlink enables the onlink falg inside
                                   the route.
