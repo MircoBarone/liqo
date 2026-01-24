@@ -118,6 +118,15 @@ func run(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
+	//Enable ECMP
+	if connoptions.GwOptions.EnableECMP {
+		if err = kernel.EnableEcmp(); err != nil {
+		return err
+	}
+	}
+
+
+
 	// Set controller-runtime logger.
 	log.SetLogger(klog.NewKlogr())
 
