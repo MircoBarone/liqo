@@ -50,6 +50,8 @@ const (
 
 	// FlagNameImplementation is the implementation of the wireguard interface.
 	FlagNameImplementation FlagName = "implementation"
+	// FlagNameInterfaceNumber is the number of interfaces to be created.
+	FlagNameInterfaceNumber FlagName = "interface-number"
 )
 
 // ClientRequiredFlags contains the list of the mandatory flags for the client mode.
@@ -68,6 +70,7 @@ func InitFlags(flagset *pflag.FlagSet, opts *Options) {
 	flagset.DurationVar(&opts.DNSCheckInterval, FlagNameDNSCheckInterval.String(), 5*time.Minute, "Interval between two DNS checks")
 
 	flagset.Var(&opts.Implementation, "implementation", "Implementation of the wireguard interface (kernel or userspace)")
+	flagset.IntVar(&opts.InterfaceNumber, FlagNameInterfaceNumber.String(), 1, "The number of WireGuard interfaces to instantiate")
 }
 
 // MarkFlagsRequired marks the flags as required.
