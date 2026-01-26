@@ -66,7 +66,7 @@ type Options struct {
 	InterfaceIP     string
 	ListenPort      int
 	EndpointAddress string
-	EndpointPort    int
+	EndpointPorts   []int
 	KeysDir         string
 
 	EndpointIP      net.IP

@@ -64,7 +64,7 @@ func InitFlags(flagset *pflag.FlagSet, opts *Options) {
 	flagset.IntVar(&opts.MTU, FlagNameMTU.String(), forge.DefaultMTU, "MTU for the interface")
 	flagset.IntVar(&opts.ListenPort, FlagNameListenPort.String(), forge.DefaultGwServerPort, "Listen port (server only)")
 	flagset.StringVar(&opts.EndpointAddress, FlagNameEndpointAddress.String(), "", "Endpoint address (client only)")
-	flagset.IntVar(&opts.EndpointPort, FlagNameEndpointPort.String(), forge.DefaultGwServerPort, "Endpoint port (client only)")
+	flagset.IntSliceVar(&opts.EndpointPorts, FlagNameEndpointPort.String(), []int{forge.DefaultGwServerPort}, "Endpoint port list (client only)")
 	flagset.StringVar(&opts.KeysDir, FlagNameKeysDir.String(), forge.DefaultKeysDir, "Directory where the keys are stored")
 
 	flagset.DurationVar(&opts.DNSCheckInterval, FlagNameDNSCheckInterval.String(), 5*time.Minute, "Interval between two DNS checks")

@@ -23,10 +23,9 @@ import (
 	"k8s.io/klog/v2"
 
 	"github.com/liqotech/liqo/pkg/gateway"
-	"github.com/liqotech/liqo/pkg/gateway/tunnel"
 )
 
-func configureDevice(wgcl *wgctrl.Client, options *Options, peerPubKey wgtypes.Key) error {
+func configureDevice(wgcl *wgctrl.Client, options *Options, peerPubKey wgtypes.Key, idx int) error {
 	confdev := wgtypes.Config{
 		PrivateKey: &options.PrivateKey,
 		ListenPort: nil,
@@ -41,17 +40,18 @@ func configureDevice(wgcl *wgctrl.Client, options *Options, peerPubKey wgtypes.K
 
 	switch options.GwOptions.Mode {
 	case gateway.ModeServer:
-		confdev.ListenPort = &options.ListenPort
+		listenport := getPortNumber(options, idx)
+		confdev.ListenPort = &listenport
 	case gateway.ModeClient:
 		confdev.Peers[0].Endpoint = &net.UDPAddr{
 			IP:   options.EndpointIP,
-			Port: options.EndpointPort,
+			Port: options.EndpointPorts[idx],
 		}
 	}
 
-	klog.Infof("Configuring device %s", tunnel.TunnelInterfaceName)
+	klog.Infof("Configuring device %s", getTunnelName(idx))
 
-	if err := wgcl.ConfigureDevice(tunnel.TunnelInterfaceName, confdev); err != nil {
+	if err := wgcl.ConfigureDevice(getTunnelName(idx), confdev); err != nil {
 		return fmt.Errorf("an error occurred while configuring the device: %w", err)
 	}
 	return nil
