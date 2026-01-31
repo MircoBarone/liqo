@@ -39,6 +39,9 @@ var WgGatewayClientGroupVersionResource = GroupVersion.WithResource(WgGatewayCli
 type WgGatewayClientSpec struct {
 	// Deployment specifies the deployment template for the client.
 	Deployment DeploymentTemplate `json:"deployment"`
+	// NumInterfaces specifies the number of interfaces for multi-tunnel.
+	// +kubebuilder:default=1
+	NumInterfaces int32 `json:"numInterfaces,omitempty"`
 	// Metrics specifies the metrics configuration for the client.
 	Metrics *Metrics `json:"metrics,omitempty"`
 	// SecretRef specifies the reference to the secret containing the wireguard configuration.

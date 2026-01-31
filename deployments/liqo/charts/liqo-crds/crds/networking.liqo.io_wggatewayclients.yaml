@@ -9608,6 +9608,12 @@ spec:
                 required:
                 - enabled
                 type: object
+              numInterfaces:
+                default: 1
+                description: NumInterfaces specifies the number of interfaces for
+                  multi-tunnel.
+                format: int32
+                type: integer
               secretRef:
                 description: |-
                   SecretRef specifies the reference to the secret containing the wireguard configuration.

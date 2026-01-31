@@ -46,18 +46,18 @@ func GetLink(name string) (netlink.Link, error) {
 
 // GetInterfaceIP returns the IP address of the Wireguard interface.
 func GetInterfaceIP(mode gateway.Mode, idx int) string {
-	var base int 
+	var base int
 	switch mode {
 	case gateway.ModeServer:
 		base = 1
 	case gateway.ModeClient:
 		base = 2
-	default: 
-	return ""
+	default:
+		return ""
 	}
 	lastOctet := base + (4 * idx)
 
-    return fmt.Sprintf("169.254.18.%d/30", lastOctet)
+	return fmt.Sprintf("169.254.18.%d/30", lastOctet)
 
 }
 

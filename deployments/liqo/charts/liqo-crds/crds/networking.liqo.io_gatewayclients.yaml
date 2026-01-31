@@ -126,6 +126,13 @@ spec:
                     items:
                       type: string
                     type: array
+                  otherPorts:
+                    description: OtherPorts specifies the additional ports in case
+                      of multi-tunnel scenario.
+                    items:
+                      format: int32
+                      type: integer
+                    type: array
                   port:
                     description: Port specifies the port of the endpoint.
                     format: int32
@@ -139,6 +146,13 @@ spec:
                 type: object
               mtu:
                 description: MTU specifies the MTU of the tunnel.
+                type: integer
+              numInterfaces:
+                default: 1
+                description: NumInterfaces specifies the number of interfaces to be
+                  created for multi-tunneling.
+                format: int32
+                minimum: 1
                 type: integer
               secretRef:
                 description: |-

@@ -149,12 +149,12 @@ func run(cmd *cobra.Command, _ []string) error {
 	}
 
 	// Create the wg-liqo interface(s) and init the wireguard configuration depending on the mode (client/server).
-	
+
 	for i := 0; i < options.InterfaceNumber; i++ {
-	if err := wireguard.InitWireguardLink(cmd.Context(), options,i); err != nil {
-		return fmt.Errorf("unable to init wireguard link %d: %w",i, err)
+		if err := wireguard.InitWireguardLink(cmd.Context(), options, i); err != nil {
+			return fmt.Errorf("unable to init wireguard link %d: %w", i, err)
+		}
 	}
-    }
 
 	// Create the Prometheus collector and register it inside the controller-runtime metrics server.
 	promcollect, err := wireguard.NewPrometheusCollector(mgr.GetClient(), &wireguard.MetricsOptions{

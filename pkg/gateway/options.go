@@ -46,7 +46,7 @@ type Options struct {
 
 	DisableKernelVersionCheck bool
 	MinimumKernelVersion      kernelversion.KernelVersion
-	EnableECMP bool 
+	EnableECMP                bool
 }
 
 // NewOptions returns a new Options struct.

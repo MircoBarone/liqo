@@ -63,6 +63,10 @@ type GatewayServerSpec struct {
 	// SecretRef specifies the reference to the secret containing configurations.
 	// Leave it empty to let the operator create a new secret.
 	SecretRef corev1.LocalObjectReference `json:"secretRef,omitempty"`
+	// NumInterfaces specifies the number of interfaces to be created for multi-tunneling.
+	// +kubebuilder:default=1
+	// +kubebuilder:validation:Minimum=1
+	NumInterfaces int32 `json:"numInterfaces,omitempty"`
 }
 
 // EndpointStatus defines the observed state of the endpoint.
@@ -71,6 +75,8 @@ type EndpointStatus struct {
 	Addresses []string `json:"addresses,omitempty"`
 	// Port specifies the port of the endpoint.
 	Port int32 `json:"port,omitempty"`
+	// OtherPorts specifies the additional ports in case of multi-tunnel scenario.
+	OtherPorts []int32 `json:"otherPorts,omitempty"`
 	// Protocol specifies the protocol of the endpoint.
 	// +kubebuilder:validation:Enum=TCP;UDP
 	Protocol *corev1.Protocol `json:"protocol,omitempty"`

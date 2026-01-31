@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"os/exec"
 	"time"
-	
 
 	"github.com/vishvananda/netlink"
 	"golang.zx2c4.com/wireguard/wgctrl"
@@ -34,9 +33,9 @@ import (
 )
 
 func getTunnelName(idx int) string {
-    if idx == 0 {
-        return tunnel.TunnelInterfaceName
-    }
+	if idx == 0 {
+		return tunnel.TunnelInterfaceName
+	}
 	return fmt.Sprintf("%s%d", tunnel.TunnelInterfaceName, idx)
 }
 
@@ -44,11 +43,9 @@ func getPortNumber(options *Options, idx int) int {
 	return options.ListenPort + (4 * idx)
 }
 
-
-
 // InitWireguardLink inits the Wireguard interface.
 func InitWireguardLink(ctx context.Context, options *Options, idx int) error {
-	tunnelname  := getTunnelName(idx)
+	tunnelname := getTunnelName(idx)
 	exists, err := existsLink(tunnelname)
 	if err != nil {
 		return fmt.Errorf("cannot check if Wireguard interface exists: %w", err)
@@ -58,26 +55,22 @@ func InitWireguardLink(ctx context.Context, options *Options, idx int) error {
 		return nil
 	}
 
-	
 	if err := createLink(ctx, options, idx); err != nil {
 		return fmt.Errorf("cannot create Wireguard interface: %w", err)
 	}
 
-	
 	link, err := tunnel.GetLink(tunnelname)
 	if err != nil {
 		return fmt.Errorf("cannot get Wireguard interface: %w", err)
 	}
 
-	
-	klog.Infof("Setting up Wireguard interface %q with IP %q", tunnelname, tunnel.GetInterfaceIP(options.GwOptions.Mode,idx))
-	if err := tunnel.AddAddress(link, tunnel.GetInterfaceIP(options.GwOptions.Mode,idx)); err != nil {
+	klog.Infof("Setting up Wireguard interface %q with IP %q", tunnelname, tunnel.GetInterfaceIP(options.GwOptions.Mode, idx))
+	if err := tunnel.AddAddress(link, tunnel.GetInterfaceIP(options.GwOptions.Mode, idx)); err != nil {
 		return err
 	}
 
 	return netlink.LinkSetUp(link)
 }
-
 
 // CreateLink creates a new Wireguard interface.
 func createLink(ctx context.Context, options *Options, idx int) error {
@@ -86,9 +79,9 @@ func createLink(ctx context.Context, options *Options, idx int) error {
 
 	switch options.Implementation {
 	case WgImplementationKernel:
-		err = createLinkKernel(options,idx)
+		err = createLinkKernel(options, idx)
 	case WgImplementationUserspace:
-		err = createLinkUserspace(ctx, options,idx)
+		err = createLinkUserspace(ctx, options, idx)
 	default:
 		err = fmt.Errorf("invalid wireguard implementation: %s", options.Implementation)
 	}
@@ -103,7 +96,7 @@ func createLink(ctx context.Context, options *Options, idx int) error {
 			return fmt.Errorf("cannot create Wireguard client: %w", err)
 		}
 		defer wgcl.Close()
-        port := getPortNumber(options, idx)
+		port := getPortNumber(options, idx)
 		if err := wgcl.ConfigureDevice(getTunnelName(idx), wgtypes.Config{
 			ListenPort: &port,
 		}); err != nil {

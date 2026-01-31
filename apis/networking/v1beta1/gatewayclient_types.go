@@ -46,6 +46,10 @@ type GatewayClientSpec struct {
 	// SecretRef specifies the reference to the secret containing configurations.
 	// Leave it empty to let the operator create a new secret.
 	SecretRef corev1.LocalObjectReference `json:"secretRef,omitempty"`
+	// NumInterfaces specifies the number of interfaces to be created for multi-tunneling.
+	// +kubebuilder:default=1
+	// +kubebuilder:validation:Minimum=1
+	NumInterfaces int32 `json:"numInterfaces,omitempty"`
 }
 
 // GatewayClientStatus defines the observed state of GatewayClient.
