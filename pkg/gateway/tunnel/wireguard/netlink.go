@@ -40,7 +40,7 @@ func getTunnelName(idx int) string {
 }
 
 func getPortNumber(options *Options, idx int) int {
-	return options.ListenPort + (4 * idx)
+	return options.ListenPort[idx]
 }
 
 // InitWireguardLink inits the Wireguard interface.

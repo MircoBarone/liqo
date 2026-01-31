@@ -62,7 +62,7 @@ var ClientRequiredFlags = []FlagName{
 // InitFlags initializes the flags for the wireguard tunnel.
 func InitFlags(flagset *pflag.FlagSet, opts *Options) {
 	flagset.IntVar(&opts.MTU, FlagNameMTU.String(), forge.DefaultMTU, "MTU for the interface")
-	flagset.IntVar(&opts.ListenPort, FlagNameListenPort.String(), forge.DefaultGwServerPort, "Listen port (server only)")
+	flagset.IntSliceVar(&opts.ListenPort, FlagNameListenPort.String(), []int{forge.DefaultGwServerPort}, "Listen port list (server only)")
 	flagset.StringVar(&opts.EndpointAddress, FlagNameEndpointAddress.String(), "", "Endpoint address (client only)")
 	flagset.IntSliceVar(&opts.EndpointPorts, FlagNameEndpointPort.String(), []int{forge.DefaultGwServerPort}, "Endpoint port list (client only)")
 	flagset.StringVar(&opts.KeysDir, FlagNameKeysDir.String(), forge.DefaultKeysDir, "Directory where the keys are stored")

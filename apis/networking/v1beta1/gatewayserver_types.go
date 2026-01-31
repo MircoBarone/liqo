@@ -39,6 +39,8 @@ var GatewayServerGroupVersionResource = GroupVersion.WithResource(GatewayServerR
 type Endpoint struct {
 	// Port specifies the port of the endpoint.
 	Port int32 `json:"port,omitempty"`
+	// OtherPorts specifies the additional ports in case of multi-tunnel scenario.
+	OtherPorts []int32 `json:"otherPorts,omitempty"`
 	// ServiceType specifies the type of the service.
 	// +kubebuilder:default=ClusterIP
 	// +kubebuilder:validation:Enum=ClusterIP;NodePort;LoadBalancer;ExternalName

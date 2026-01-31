@@ -64,7 +64,7 @@ type Options struct {
 	MTU             int
 	PrivateKey      wgtypes.Key
 	InterfaceIP     string
-	ListenPort      int
+	ListenPort      []int
 	EndpointAddress string
 	EndpointPorts   []int
 	KeysDir         string

@@ -65,7 +65,7 @@ spec:
                 - --gateway-uid={{ .GatewayUID }}
                 - --mode=server
                 - --mtu={{ .Spec.MTU }}
-                - --listen-port={{ .Spec.Endpoint.Port }}
+                - --listen-port={{ .Spec.Endpoint.Port }}{{ range .Spec.Endpoint.OtherPorts }},{{ . }}{{ end }}
                 - --metrics-address=:8082
                 - --health-probe-bind-address=:8083
                 - --interface-number={{ .Spec.NumInterfaces }}
