@@ -240,8 +240,53 @@ func (r *ServerReconciler) EnsureGatewayServer(ctx context.Context, gwServer *ne
 		if err != nil {
 			return fmt.Errorf("unable to render the template spec: %w", err)
 		}
-		objChild.Object["spec"] = spec
-		return nil
+		specMap, ok := spec.(map[string]interface{})
+if !ok {
+    return fmt.Errorf("unable to cast the spec to map for %s", gwServer.Name)
+}
+
+if len(gwServer.Spec.Endpoint.OtherPorts) > 0 {
+    serviceMap, ok := specMap["service"].(map[string]interface{})
+    if !ok {
+        return fmt.Errorf("unable to cast service to map")
+    }
+    
+    serviceSpecMap, ok := serviceMap["spec"].(map[string]interface{})
+    if !ok {
+        return fmt.Errorf("unable to cast service spec to map")
+    }
+    
+    ports, ok := serviceSpecMap["ports"].([]interface{})
+    if !ok {
+        return fmt.Errorf("unable to cast ports to slice")
+    }
+
+	if len(ports) > 0 {
+    firstPort, ok := ports[0].(map[string]interface{})
+    if ok {
+        if _, nameExists := firstPort["name"]; !nameExists {
+            firstPort["name"] = "liqo-tunnel"
+        }
+    }
+   }
+
+    for i, port := range gwServer.Spec.Endpoint.OtherPorts {
+        p64 := int64(port)
+        ports = append(ports, map[string]interface{}{
+            "name":       fmt.Sprintf("liqo-tunnel-%d", i),
+            "port":       p64,
+            "protocol":   "UDP",
+            "targetPort": p64,
+        })
+    }
+
+    serviceSpecMap["ports"] = ports
+}
+
+objChild.Object["spec"] = specMap
+klog.Infof("reconciliation completed for %s with %d extra ports", gwServer.Name, len(gwServer.Spec.Endpoint.OtherPorts))
+
+return nil
 	})
 	if err != nil {
 		return fmt.Errorf("unable to update the server: %w", err)
