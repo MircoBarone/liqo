@@ -273,7 +273,7 @@ if len(gwServer.Spec.Endpoint.OtherPorts) > 0 {
     for i, port := range gwServer.Spec.Endpoint.OtherPorts {
         p64 := int64(port)
         ports = append(ports, map[string]interface{}{
-            "name":       fmt.Sprintf("liqo-tunnel-%d", i),
+            "name":       fmt.Sprintf("liqo-tunnel-%d", i+1),
             "port":       p64,
             "protocol":   "UDP",
             "targetPort": p64,
