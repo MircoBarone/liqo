@@ -363,12 +363,22 @@ func (r *WgGatewayServerReconciler) forgeEndpointStatusClusterIP(service *corev1
 	}
 
 	port := service.Spec.Ports[0].Port
+
+	var otherPorts []int32
+	if len(service.Spec.Ports) > 1 {
+        for i := 1; i < len(service.Spec.Ports); i++ {
+           
+            otherPorts = append(otherPorts, service.Spec.Ports[i].Port)
+        }
+    }
+	
 	protocol := &service.Spec.Ports[0].Protocol
 	addresses := service.Spec.ClusterIPs
 
 	return &networkingv1beta1.EndpointStatus{
 		Protocol:  protocol,
 		Port:      port,
+		OtherPorts: otherPorts,
 		Addresses: addresses,
 	}, nil
 }
@@ -382,6 +392,13 @@ func (r *WgGatewayServerReconciler) forgeEndpointStatusNodePort(ctx context.Cont
 	}
 
 	port := service.Spec.Ports[0].NodePort
+	var otherPorts []int32
+	if len(service.Spec.Ports) > 1 {
+        for i := 1; i < len(service.Spec.Ports); i++ {
+           
+            otherPorts = append(otherPorts, service.Spec.Ports[i].NodePort)
+        }
+    }
 	protocol := &service.Spec.Ports[0].Protocol
 
 	podsSelector := client.MatchingLabelsSelector{Selector: labels.SelectorFromSet(gateway.ForgeActiveGatewayPodLabels())}
@@ -424,6 +441,7 @@ func (r *WgGatewayServerReconciler) forgeEndpointStatusNodePort(ctx context.Cont
 	return &networkingv1beta1.EndpointStatus{
 			Protocol:  protocol,
 			Port:      port,
+			OtherPorts: otherPorts,
 			Addresses: addresses,
 		}, &networkingv1beta1.InternalGatewayEndpoint{
 			IP:   ptr.To(networkingv1beta1.IP(internalAddress)),
@@ -439,6 +457,12 @@ func (r *WgGatewayServerReconciler) forgeEndpointStatusLoadBalancer(service *cor
 	}
 
 	port := service.Spec.Ports[0].Port
+	var otherPorts []int32
+    if len(service.Spec.Ports) > 1 {
+        for i := 1; i < len(service.Spec.Ports); i++ {
+            otherPorts = append(otherPorts, service.Spec.Ports[i].Port)
+        }
+    }
 	protocol := &service.Spec.Ports[0].Protocol
 
 	var addresses []string
@@ -454,6 +478,7 @@ func (r *WgGatewayServerReconciler) forgeEndpointStatusLoadBalancer(service *cor
 	return &networkingv1beta1.EndpointStatus{
 		Protocol:  protocol,
 		Port:      port,
+		OtherPorts: otherPorts,
 		Addresses: addresses,
 	}, nil
 }
