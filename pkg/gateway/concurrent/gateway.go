@@ -18,12 +18,17 @@ import (
 	"context"
 	"fmt"
 	"net"
-
+    "time"
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
-
+    "github.com/liqotech/liqo/pkg/utils/kernel"
 	"github.com/liqotech/liqo/pkg/utils/ipc"
+
+	
+	"path/filepath"
+
+	"k8s.io/klog/v2"
 )
 
 var _ manager.Runnable = &RunnableGateway{}
@@ -96,6 +101,31 @@ func (rg *RunnableGateway) Start(ctx context.Context) error {
 	if err := ipc.StartAllGuestsConnections(rg.GuestConnections); err != nil {
 		return err
 	}
+
+	go func() {
+    
+    for {
+        matches, err := filepath.Glob("/sys/class/net/liqo-tunnel*/threaded")
+        if err != nil {
+            klog.Errorf("Error during glob: %v", err)
+            time.Sleep(1 * time.Second)
+            continue
+        }
+
+        if len(matches) > 0 {
+            klog.Infof("Found %d interfaces: %v. Applying tuning...", len(matches), matches)
+            if err := kernel.EnableWireguardThreadedMode(); err != nil {
+                klog.Warningf("Interfaces found but tuning failed: %v. Retrying...", err)
+            } else {
+                klog.Info("Threaded mode tuning applied successfully!")
+                return 
+            }
+        } else {
+            klog.Info("Waiting for liqo-tunnel interfaces to appear...")
+        }
+        time.Sleep(1 * time.Second)
+    }
+}()
 
 	return nil
 }
