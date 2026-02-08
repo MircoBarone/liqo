@@ -82,7 +82,7 @@ func (r *ConnectionsReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	switch r.Options.PingEnabled {
 	case true:
-		remoteIP, err := tunnel.GetRemoteInterfaceIP(r.Options.GwOptions.Mode)
+		remoteIP, err := tunnel.GetRemoteInterfaceIP(r.Options.GwOptions.Mode,0)
 		if err != nil {
 			return ctrl.Result{}, fmt.Errorf("unable to get the remote interface IP: %w", err)
 		}

@@ -69,10 +69,19 @@ func enforceRouteConfigurationPresence(ctx context.Context, cl client.Client, sc
 		return nil
 	}
 
-	remoteInterfaceIP, err := tunnel.GetRemoteInterfaceIP(mode)
-	if err != nil {
-		return err
-	}
+	numInterfaces, err := GetGatewayNumInterfaces(ctx, cl, remoteClusterID)
+    if err != nil {
+         return err
+    }
+
+	var remoteInterfaceIPs []string
+    for i := 0; i < numInterfaces; i++ {
+        ip, err := tunnel.GetRemoteInterfaceIP(mode, i)
+        if err != nil {
+            return fmt.Errorf("failed to calculate remote IP for interface %d: %w", i, err)
+        }
+        remoteInterfaceIPs = append(remoteInterfaceIPs, ip)
+	}	
 
 	routecfg := &networkingv1beta1.RouteConfiguration{
 		ObjectMeta: metav1.ObjectMeta{
@@ -87,7 +96,7 @@ func enforceRouteConfigurationPresence(ctx context.Context, cl client.Client, sc
 	}
 
 	_, err = resource.CreateOrUpdate(ctx, cl, routecfg,
-		forgeMutateRouteConfiguration(cfg, routecfg, scheme, remoteClusterID, remoteInterfaceIP, internalNodes))
+		forgeMutateRouteConfiguration(cfg, routecfg, scheme, remoteClusterID, remoteInterfaceIPs, internalNodes, numInterfaces))
 	return err
 }
 
@@ -95,7 +104,9 @@ func enforceRouteConfigurationPresence(ctx context.Context, cl client.Client, sc
 func forgeMutateRouteConfiguration(cfg *networkingv1beta1.Configuration,
 	routecfg *networkingv1beta1.RouteConfiguration, scheme *runtime.Scheme,
 	remoteClusterID liqov1beta1.ClusterID,
-	remoteInterfaceIP string, internalNodes *networkingv1beta1.InternalNodeList) func() error {
+	remoteInterfaceIPs []string, 
+	internalNodes *networkingv1beta1.InternalNodeList,
+	numInterfaces int) func() error {
 	return func() error {
 		var err error
 
@@ -112,30 +123,49 @@ func forgeMutateRouteConfiguration(cfg *networkingv1beta1.Configuration,
 		}
 
 		for i := range internalNodes.Items {
-			routecfg.Spec.Table.Rules = append(routecfg.Spec.Table.Rules,
-				[]networkingv1beta1.Rule{
-					{
-						Iif: &internalNodes.Items[i].Spec.Interface.Gateway.Name,
-						Dst: cidrutils.GetPrimary(cfg.Spec.Remote.CIDR.Pod),
-						Routes: []networkingv1beta1.Route{
-							{
-								Dst: cidrutils.GetPrimary(cfg.Spec.Remote.CIDR.Pod),
-								Gw:  ptr.To(networkingv1beta1.IP(remoteInterfaceIP)),
-							},
-						},
-					},
-					{
-						Iif: &internalNodes.Items[i].Spec.Interface.Gateway.Name,
-						Dst: cidrutils.GetPrimary(cfg.Spec.Remote.CIDR.External),
-						Routes: []networkingv1beta1.Route{
-							{
-								Dst: cidrutils.GetPrimary(cfg.Spec.Remote.CIDR.External),
-								Gw:  ptr.To(networkingv1beta1.IP(remoteInterfaceIP)),
-							},
-						},
-					},
-				}...)
-		}
+   
+          podRoute := networkingv1beta1.Route{
+          Dst: cidrutils.GetPrimary(cfg.Spec.Remote.CIDR.Pod),
+          }
+
+    
+          externalRoute := networkingv1beta1.Route{
+          Dst: cidrutils.GetPrimary(cfg.Spec.Remote.CIDR.External),
+          }
+
+
+          if numInterfaces == 1 {
+        
+          gwIP := ptr.To(networkingv1beta1.IP(remoteInterfaceIPs[0]))
+          podRoute.Gw = gwIP
+          externalRoute.Gw = gwIP
+         } else {
+        
+         for _, ip := range remoteInterfaceIPs {
+            nh := networkingv1beta1.NextHop{
+                Gw:     networkingv1beta1.IP(ip),
+                Weight: ptr.To(1),
+            }
+            podRoute.NextHops = append(podRoute.NextHops, nh)
+            externalRoute.NextHops = append(externalRoute.NextHops, nh)
+         }
+        }
+
+    
+        routecfg.Spec.Table.Rules = append(routecfg.Spec.Table.Rules,
+        []networkingv1beta1.Rule{
+            {
+                Iif:    &internalNodes.Items[i].Spec.Interface.Gateway.Name,
+                Dst:    cidrutils.GetPrimary(cfg.Spec.Remote.CIDR.Pod),
+                Routes: []networkingv1beta1.Route{podRoute},
+            },
+            {
+                Iif:    &internalNodes.Items[i].Spec.Interface.Gateway.Name,
+                Dst:    cidrutils.GetPrimary(cfg.Spec.Remote.CIDR.External),
+                Routes: []networkingv1beta1.Route{externalRoute},
+            },
+        }...)
+     }
 		return nil
 	}
 }
@@ -159,4 +189,23 @@ func GetGatewayMode(ctx context.Context, cl client.Client, remoteClusterID liqov
 	}
 
 	return "", fmt.Errorf("unable to determine Gateway mode for cluster %s", remoteClusterID)
+}
+
+// GetGatewayNumInterfaces returns the number of interfaces of the Gateway related to the Configuration.
+func GetGatewayNumInterfaces(ctx context.Context, cl client.Client, remoteClusterID liqov1beta1.ClusterID) (int, error) {
+	gwserver, gwclient, err := getters.GetGatewaysByClusterID(ctx, cl, remoteClusterID)
+	if err != nil {
+		return 0, err
+	}
+
+	switch {
+	
+	case gwclient == nil && gwserver != nil:
+		return int(gwserver.Spec.NumInterfaces), nil
+	
+	case gwclient != nil && gwserver == nil:
+		return int(gwclient.Spec.NumInterfaces), nil
+	}
+
+	return 0, fmt.Errorf("unable to determine number of interfaces for cluster %s", remoteClusterID)
 }

@@ -61,15 +61,16 @@ func GetInterfaceIP(mode gateway.Mode, idx int) string {
 
 }
 
-// GetRemoteInterfaceIP returns the IP address of the remote Wireguard interface.
-func GetRemoteInterfaceIP(mode gateway.Mode) (string, error) {
+func GetRemoteInterfaceIP(mode gateway.Mode, idx int) (string, error) {
+	var remoteBase int
 	switch mode {
 	case gateway.ModeServer:
-		ip, err := netlink.ParseIPNet(ClientInterfaceIP)
-		return ip.IP.String(), err
+		remoteBase = 2
 	case gateway.ModeClient:
-		ip, err := netlink.ParseIPNet(ServerInterfaceIP)
-		return ip.IP.String(), err
+		remoteBase = 1
+	default:
+		return "", fmt.Errorf("invalid gateway mode: %v", mode)
 	}
-	return "", fmt.Errorf("invalid mode %v", mode)
+	lastOctet := remoteBase + (4 * idx)
+	return fmt.Sprintf("169.254.18.%d", lastOctet), nil
 }
