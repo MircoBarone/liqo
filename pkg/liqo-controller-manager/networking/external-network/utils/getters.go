@@ -38,14 +38,14 @@ func ParseEndpoint(endpoint map[string]interface{}) *networkingv1beta1.EndpointS
 		res.Port = int32(value.(int64))
 	}
 	if value, ok := endpoint["otherPorts"]; ok {
-        if list, ok := value.([]interface{}); ok {
-            for _, v := range list {
-                if port, ok := v.(int64); ok {
-                    res.OtherPorts = append(res.OtherPorts, int32(port))
-                }
-            }
-        }
-    }
+		if list, ok := value.([]interface{}); ok {
+			for _, v := range list {
+				if port, ok := v.(int64); ok {
+					res.OtherPorts = append(res.OtherPorts, int32(port))
+				}
+			}
+		}
+	}
 	if value, ok := endpoint["protocol"]; ok {
 		tmp := corev1.Protocol(value.(string))
 		res.Protocol = &tmp
