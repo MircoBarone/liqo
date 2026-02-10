@@ -18,7 +18,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-
+	"net"
+	"strings"
+    "k8s.io/utils/ptr"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -143,16 +145,32 @@ func (r *RouteConfigurationReconciler) Reconcile(ctx context.Context, req ctrl.R
 	case deleting && !containsFinalizer:
 		return ctrl.Result{}, nil
 	}
+	expandedRules := []networkingv1beta1.Rule{}
+    ifaces, _ := net.Interfaces()
 
-	if err = CleanRules(routeconfiguration.Spec.Table.Rules, tableID); err != nil {
+	for _, rule := range routeconfiguration.Spec.Table.Rules {
+    	if rule.Iif != nil && *rule.Iif == "liqo-tunnel" {
+        	for _, iface := range ifaces {
+            	if strings.HasPrefix(iface.Name, "liqo-tunnel") {
+                	newRule := rule
+                	newRule.Iif = ptr.To(iface.Name)
+                	expandedRules = append(expandedRules, newRule)
+            	}
+        	}
+    	} else {
+       		 expandedRules = append(expandedRules, rule)
+   		 }
+	}
+
+	if err = CleanRules(expandedRules, tableID); err != nil {
 		return ctrl.Result{}, err
 	}
 
 	allRoutes := []networkingv1beta1.Route{}
-	for i := range routeconfiguration.Spec.Table.Rules {
+	for i := range expandedRules {
 		// Append all the routes in the same table in a single array.
 		// This is necessary because we can't list the route rules filtering per rule.
-		allRoutes = append(allRoutes, routeconfiguration.Spec.Table.Rules[i].Routes...)
+		allRoutes = append(allRoutes, expandedRules[i].Routes...)
 	}
 	if err = CleanRoutes(allRoutes, tableID); err != nil {
 		return ctrl.Result{}, err
@@ -164,14 +182,15 @@ func (r *RouteConfigurationReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return ctrl.Result{}, err
 	}
 
-	for i := range routeconfiguration.Spec.Table.Rules {
-		if err = EnsureRulePresence(&routeconfiguration.Spec.Table.Rules[i], tableID); err != nil {
-			return ctrl.Result{}, err
-		}
-		if err := EnsureRoutesPresence(routeconfiguration.Spec.Table.Rules[i].Routes, tableID); err != nil {
-			return ctrl.Result{}, err
-		}
-	}
+	for _,rule := range expandedRules {
+        if err = EnsureRulePresence(&rule, tableID); err != nil {
+        return ctrl.Result{}, err
+    	}
+    
+    	if err := EnsureRoutesPresence(rule.Routes, tableID); err != nil {
+        return ctrl.Result{}, err
+    	}
+    	}
 
 	klog.Infof("Applied routeconfiguration %s", req.String())
 
