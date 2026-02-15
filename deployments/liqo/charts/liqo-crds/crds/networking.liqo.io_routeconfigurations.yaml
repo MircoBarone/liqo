@@ -126,6 +126,7 @@ spec:
                                   - dev
                                   - gw
                                   type: object
+                                minItems: 1
                                 type: array
                               onlink:
                                 description: Onlink enables the onlink flag inside

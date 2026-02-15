@@ -24,7 +24,7 @@ import (
 
 func addRules(nftconn *nftables.Conn, chain *firewallapi.Chain, nftchain *nftables.Chain) (bool, error) {
 	notrackApplied := false
-	apirules := FromChainToRulesArray(chain)
+	apirules := FromChainToRulesArray(chain, nftconn, nftchain.Table)
 	nftrules, err := nftconn.GetRules(nftchain.Table, nftchain)
 	if err != nil {
 		return false, err

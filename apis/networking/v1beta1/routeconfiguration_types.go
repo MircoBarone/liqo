@@ -80,6 +80,7 @@ type Route struct {
 	// NextHops is the list of next-hops for ECMP (Equal-Cost Multi-Path) routing.
 	// Mutually exclusive with Gw.
 	// +optional
+	// +kubebuilder:validation:MinItems=1
 	NextHops []NextHop `json:"nextHops,omitempty"`
 	// Dev is the device of the RouteConfiguration.
 	Dev *string `json:"dev,omitempty"`

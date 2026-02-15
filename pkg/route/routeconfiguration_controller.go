@@ -18,6 +18,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
+	"strings"
 	"time"
 
 	"github.com/vishvananda/netlink"
@@ -28,6 +30,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -146,9 +149,25 @@ func (r *RouteConfigurationReconciler) Reconcile(ctx context.Context, req ctrl.R
 	case deleting && !containsFinalizer:
 		return ctrl.Result{}, nil
 	}
+	expandedRules := []networkingv1beta1.Rule{}
+	ifaces, _ := net.Interfaces()
 
-	if err = CleanRules(routeconfiguration.Spec.Table.Rules, tableID); err != nil {
-		return ctrl.Result{}, fmt.Errorf("cleaning rules: %w", err)
+	for _, rule := range routeconfiguration.Spec.Table.Rules {
+		if rule.Iif != nil && *rule.Iif == "liqo-tunnel" {
+			for _, iface := range ifaces {
+				if strings.HasPrefix(iface.Name, "liqo-tunnel") {
+					newRule := rule
+					newRule.Iif = ptr.To(iface.Name)
+					expandedRules = append(expandedRules, newRule)
+				}
+			}
+		} else {
+			expandedRules = append(expandedRules, rule)
+		}
+	}
+
+	if err = CleanRules(expandedRules, tableID); err != nil {
+		return ctrl.Result{}, err
 	}
 
 	allRoutes := []networkingv1beta1.Route{}
@@ -167,11 +186,11 @@ func (r *RouteConfigurationReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return ctrl.Result{}, fmt.Errorf("ensuring table presence: %w", err)
 	}
 
-	for i := range routeconfiguration.Spec.Table.Rules {
-		if err = EnsureRulePresence(&routeconfiguration.Spec.Table.Rules[i], tableID); err != nil {
+	for _, rule := range expandedRules {
+		if err = EnsureRulePresence(&rule, tableID); err != nil {
 			return ctrl.Result{}, fmt.Errorf("ensuring rule presence: %w", err)
 		}
-		if err := EnsureRoutesPresence(routeconfiguration.Spec.Table.Rules[i].Routes, tableID); err != nil {
+		if err := EnsureRoutesPresence(rule.Routes, tableID); err != nil {
 			if errors.As(err, &netlink.LinkNotFoundError{}) {
 				klog.V(3).Infof("Link not found for routeconfiguration %s, requeuing: %v", req.String(), err)
 				return ctrl.Result{RequeueAfter: 1 * time.Second}, nil
