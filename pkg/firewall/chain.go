@@ -20,6 +20,10 @@ import (
 
 	firewallapi "github.com/liqotech/liqo/apis/networking/v1beta1/firewall"
 	firewallutils "github.com/liqotech/liqo/pkg/firewall/utils"
+	"net"
+	"strings"
+	"fmt"
+	"sort"
 )
 
 func addChains(nftConn *nftables.Conn, chains []firewallapi.Chain, table *nftables.Table) error {
@@ -215,6 +219,14 @@ func isChainModified(nftChain *nftables.Chain, chain *firewallapi.Chain) bool {
 
 // FromChainToRulesArray converts a chain to an array of rules.
 func FromChainToRulesArray(chain *firewallapi.Chain) (rules []firewallutils.Rule) {
+	ifaces, _ := net.Interfaces()
+	var tunnels []string
+		for _, iface := range ifaces {
+    		if strings.HasPrefix(iface.Name, "liqo-tunnel") {
+        	tunnels = append(tunnels, iface.Name)
+    		}
+		}
+	sort.Strings(tunnels)
 	switch chain.Type {
 	case firewallapi.ChainTypeFilter:
 		rules = make([]firewallutils.Rule, len(chain.Rules.FilterRules))
@@ -223,10 +235,26 @@ func FromChainToRulesArray(chain *firewallapi.Chain) (rules []firewallutils.Rule
 		}
 		return rules
 	case firewallapi.ChainTypeNAT:
-		rules = make([]firewallutils.Rule, len(chain.Rules.NatRules))
-		for i := range chain.Rules.NatRules {
-			rules[i] = &firewallutils.NatRuleWrapper{NatRule: &chain.Rules.NatRules[i]}
-		}
+        rules = []firewallutils.Rule{} 
+        for i := range chain.Rules.NatRules {
+            natRule := &chain.Rules.NatRules[i]
+            needsExpansion, isNeq := checkExpansion(natRule)
+
+            if !needsExpansion || len(tunnels) == 0 {
+                rules = append(rules, &firewallutils.NatRuleWrapper{NatRule: natRule})
+                continue
+            }
+
+            if isNeq {
+                expandedRule := expandNeq(natRule, tunnels)
+                rules = append(rules, &firewallutils.NatRuleWrapper{NatRule: expandedRule})
+            } else {
+                for _, tName := range tunnels {
+                    rules = append(rules, &firewallutils.NatRuleWrapper{NatRule: expandEq(natRule, tName)})
+                }
+            }
+        }
+        return rules
 	case firewallapi.ChainTypeRoute:
 		rules = make([]firewallutils.Rule, len(chain.Rules.RouteRules))
 		for i := range chain.Rules.RouteRules {
@@ -238,6 +266,74 @@ func FromChainToRulesArray(chain *firewallapi.Chain) (rules []firewallutils.Rule
 	}
 	// It is not necessary, but linter complains
 	return rules
+}
+
+// checkExpansion determines if a NAT rule targets the liqo-tunnel placeholder and identifies the matching operation type.
+func checkExpansion(nr *firewallapi.NatRule) (needs bool, isNeq bool) {
+    for i := range nr.Match {
+        if nr.Match[i].Dev != nil {
+            if nr.Match[i].Dev.Value == "liqo-tunnel" {
+                return true, nr.Match[i].Op == firewallapi.MatchOperationNeq
+            }
+        }
+    }
+    return false, false
+}
+
+// expandNeq enriches a single rule by appending negative matches for all active liqo-tunnel interfaces found in the system.
+func expandNeq(natRule *firewallapi.NatRule, tunnels []string) *firewallapi.NatRule {
+    newRule := natRule.DeepCopy()
+
+    var originalPosition firewallapi.MatchDevPosition
+    for _, m := range natRule.Match {
+        if m.Dev != nil && m.Dev.Value == "liqo-tunnel" {
+            originalPosition = m.Dev.Position
+            break
+        }
+    }
+
+    for _, tName := range tunnels {
+        if tName == "liqo-tunnel" {
+            continue
+        }
+        alreadyPresent := false
+        for _, m := range newRule.Match {
+            if m.Dev != nil && m.Dev.Value == tName {
+                alreadyPresent = true
+                break
+            }
+        }
+
+        if !alreadyPresent {
+            newRule.Match = append(newRule.Match, firewallapi.Match{
+                Op: firewallapi.MatchOperationNeq,
+                Dev: &firewallapi.MatchDev{
+                    Value:    tName,
+                    Position: originalPosition,
+                },
+            })
+        }
+    }
+    
+    return newRule
+}
+
+// expandEq generates a unique rule clone for a specific tunnel interface by updating the device match and the rule name.
+func expandEq(natRule *firewallapi.NatRule, tName string) *firewallapi.NatRule {
+    newRule := natRule.DeepCopy()
+    if natRule.Name != nil {
+        newName := fmt.Sprintf("%s-%s", *natRule.Name, tName)
+        newRule.Name = &newName
+    }
+    for i := range newRule.Match {
+        if newRule.Match[i].Dev != nil  {
+            if newRule.Match[i].Dev.Value == "liqo-tunnel" {
+                newRule.Match[i].Dev.Value = tName
+            }
+        }
+    }
+
+    return newRule
 }
 
 // cleanChain removes all the rules that are not present in the firewall configuration or that have been modified.
