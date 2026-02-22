@@ -190,6 +190,36 @@ spec:
                                           required:
                                           - value
                                           type: object
+                                        set:
+                                          description: Set contains the options to
+                                            match a set of devices.
+                                          properties:
+                                            operator:
+                                              description: Operator is the operator
+                                                to apply to the set of devices.
+                                              enum:
+                                              - in
+                                              - nin
+                                              type: string
+                                            position:
+                                              description: Position is the position
+                                                of the device in the packet (in or
+                                                out)
+                                              enum:
+                                              - in
+                                              - out
+                                              type: string
+                                            values:
+                                              description: Values are the names of
+                                                the device to be matched.
+                                              items:
+                                                type: string
+                                              type: array
+                                          required:
+                                          - operator
+                                          - position
+                                          - values
+                                          type: object
                                       required:
                                       - op
                                       type: object
@@ -298,6 +328,36 @@ spec:
                                               type: string
                                           required:
                                           - value
+                                          type: object
+                                        set:
+                                          description: Set contains the options to
+                                            match a set of devices.
+                                          properties:
+                                            operator:
+                                              description: Operator is the operator
+                                                to apply to the set of devices.
+                                              enum:
+                                              - in
+                                              - nin
+                                              type: string
+                                            position:
+                                              description: Position is the position
+                                                of the device in the packet (in or
+                                                out)
+                                              enum:
+                                              - in
+                                              - out
+                                              type: string
+                                            values:
+                                              description: Values are the names of
+                                                the device to be matched.
+                                              items:
+                                                type: string
+                                              type: array
+                                          required:
+                                          - operator
+                                          - position
+                                          - values
                                           type: object
                                       required:
                                       - op

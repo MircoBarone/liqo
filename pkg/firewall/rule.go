@@ -23,7 +23,7 @@ import (
 )
 
 func addRules(nftconn *nftables.Conn, chain *firewallapi.Chain, nftchain *nftables.Chain) error {
-	apirules := FromChainToRulesArray(chain)
+	apirules := FromChainToRulesArray(chain, nftconn, nftchain.Table)
 	nftrules, err := nftconn.GetRules(nftchain.Table, nftchain)
 	if err != nil {
 		return err

@@ -17,7 +17,8 @@ package wireguard
 import (
 	"fmt"
 	"net"
-    "time"
+	"time"
+
 	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"k8s.io/klog/v2"
@@ -39,8 +40,8 @@ func configureDevice(wgcl *wgctrl.Client, options *Options, peerPubKey wgtypes.K
 	}
 
 	if idx > 0 {
-        keepalive := 25 * time.Second
-        confdev.Peers[0].PersistentKeepaliveInterval = &keepalive
+		keepalive := 25 * time.Second
+		confdev.Peers[0].PersistentKeepaliveInterval = &keepalive
 	}
 
 	switch options.GwOptions.Mode {

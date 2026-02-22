@@ -37,11 +37,18 @@ const (
 // MatchDevPosition is the position of the device in the packet.
 type MatchDevPosition string
 
+// MatchSetOperator is the operator to apply to a set of devices.
+type MatchSetOperator string
+
 const (
 	// MatchDevPositionIn is the position of the device in the packet.
 	MatchDevPositionIn MatchDevPosition = "in"
 	// MatchDevPositionOut is the position of the device in the packet.
 	MatchDevPositionOut MatchDevPosition = "out"
+	// MatchSetOperatorIn indicates the device must be part of the set.
+	MatchSetOperatorIn MatchSetOperator = "in"
+	// MatchSetOperatorNin indicates the device must not be part of the set.
+	MatchSetOperatorNin MatchSetOperator = "nin"
 )
 
 // L4Proto is the protocol of the packet.
@@ -84,6 +91,19 @@ type MatchDev struct {
 	Position MatchDevPosition `json:"position"`
 }
 
+// MatchSet is a set of devices to be matched.
+// +kubebuilder:object:generate=true
+type MatchSet struct {
+	// Values are the names of the device to be matched.
+	Values []string `json:"values"`
+	// Operator is the operator to apply to the set of devices.
+	// +kubebuilder:validation:Enum=in;nin
+	Operator MatchSetOperator `json:"operator"`
+	// Position is the position of the device in the packet (in or out)
+	// +kubebuilder:validation:Enum=in;out
+	Position MatchDevPosition `json:"position"`
+}
+
 // MatchProto is a protocol to be matched.
 // +kubebuilder:object:generate=true
 type MatchProto struct {
@@ -106,4 +126,6 @@ type Match struct {
 	Proto *MatchProto `json:"proto,omitempty"`
 	// Dev contains the options to match a device.
 	Dev *MatchDev `json:"dev,omitempty"`
+	// Set contains the options to match a set of devices.
+	Set *MatchSet `json:"set,omitempty"`
 }

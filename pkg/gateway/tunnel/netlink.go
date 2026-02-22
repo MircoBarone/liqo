@@ -56,7 +56,7 @@ func GetInterfaceIP(mode gateway.Mode, idx int) string {
 		return ""
 	}
 	totalOffset := (4 * idx) + base
-    thirdOctet := 18 + (totalOffset / 256)
+	thirdOctet := 18 + (totalOffset / 256)
 	fourthOctet := totalOffset % 256
 	return fmt.Sprintf("169.254.%d.%d/30", thirdOctet, fourthOctet)
 
@@ -73,7 +73,7 @@ func GetRemoteInterfaceIP(mode gateway.Mode, idx int) (string, error) {
 		return "", fmt.Errorf("invalid gateway mode: %v", mode)
 	}
 	totalOffset := (4 * idx) + remoteBase
-    thirdOctet := 18 + (totalOffset / 256)
-    fourthOctet := totalOffset % 256
+	thirdOctet := 18 + (totalOffset / 256)
+	fourthOctet := totalOffset % 256
 	return fmt.Sprintf("169.254.%d.%d", thirdOctet, fourthOctet), nil
 }

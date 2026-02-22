@@ -79,7 +79,6 @@ type Route struct {
 	// If specified, this takes precedence over the Gw field.
 	// +optional
 	// +kubebuilder:validation:MinItems=1
-	// +kubebuilder:validation:MaxItems=32
 	NextHops []NextHop `json:"nextHops,omitempty"`
 	// Dev is the device of the RouteConfiguration.
 	Dev *string `json:"dev,omitempty"`
