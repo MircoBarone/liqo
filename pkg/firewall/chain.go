@@ -231,43 +231,36 @@ func FromChainToRulesArray(chain *firewallapi.Chain, nftconn *nftables.Conn, tab
 	sort.Strings(tunnels)
 	switch chain.Type {
 	case firewallapi.ChainTypeFilter:
-		rules = []firewallutils.Rule{}
-		for i := range chain.Rules.FilterRules {
-			filterRule := &chain.Rules.FilterRules[i]
+        rules = []firewallutils.Rule{}
+        for i := range chain.Rules.FilterRules {
+            filterRule := &chain.Rules.FilterRules[i]
 
-			needsExpansion, isNeq := checkExpansionMatches(filterRule.Match)
+            needsExpansion, isNeq := checkExpansionMatches(filterRule.Match)
 
-			if needsExpansion && !isNeq && len(tunnels) > 0 {
-				for _, tName := range tunnels {
-					rules = append(rules, &firewallutils.FilterRuleWrapper{
-						FilterRule: expandFilterEq(filterRule, tName),
-					})
-				}
-			} else {
-
-				rules = append(rules, &firewallutils.FilterRuleWrapper{FilterRule: filterRule})
-			}
-		}
-		return rules
+            if needsExpansion && len(tunnels) > 1 {
+                expandedRule := expandFilterWithSet(filterRule, tunnels, isNeq, nftconn, table)
+                rules = append(rules, &firewallutils.FilterRuleWrapper{
+                    FilterRule: expandedRule,
+                })
+            } else {
+                rules = append(rules, &firewallutils.FilterRuleWrapper{
+                    FilterRule: filterRule,
+                })
+            }
+        }
+        return rules
 	case firewallapi.ChainTypeNAT:
 		rules = []firewallutils.Rule{}
 		for i := range chain.Rules.NatRules {
 			natRule := &chain.Rules.NatRules[i]
 			needsExpansion, isNeq := checkExpansionMatches(natRule.Match)
 
-			if !needsExpansion || len(tunnels) == 0 {
+			if !needsExpansion || len(tunnels) <= 1 {
 				rules = append(rules, &firewallutils.NatRuleWrapper{NatRule: natRule})
 				continue
 			}
-
-			if isNeq {
-				expandedRule := expandNatNeq(natRule, tunnels, nftconn, table)
-				rules = append(rules, &firewallutils.NatRuleWrapper{NatRule: expandedRule})
-			} else {
-				for _, tName := range tunnels {
-					rules = append(rules, &firewallutils.NatRuleWrapper{NatRule: expandNatEq(natRule, tName)})
-				}
-			}
+           expandedRule := expandNatWithSet(natRule, tunnels, isNeq, nftconn, table)
+           rules = append(rules, &firewallutils.NatRuleWrapper{NatRule: expandedRule})
 		}
 		return rules
 	case firewallapi.ChainTypeRoute:
@@ -293,14 +286,9 @@ func checkExpansionMatches(matches []firewallapi.Match) (needs bool, isNeq bool)
 	return false, false
 }
 
-// expandNatNeq enriches a single rule by appending negative matches for all active liqo-tunnel interfaces found in the system.
-func expandNatNeq(natRule *firewallapi.NatRule, tunnels []string, nftconn *nftables.Conn, table *nftables.Table) *firewallapi.NatRule {
-
-	if len(tunnels) <= 1 {
-		return natRule
-	}
-
-	newRule := natRule.DeepCopy()
+// expandFilterWithSet transforms a Filter rule targeting "liqo-tunnel" into a set-based rule.
+func expandFilterWithSet(filterRule *firewallapi.FilterRule, tunnels []string, isNeq bool, nftconn *nftables.Conn, table *nftables.Table) *firewallapi.FilterRule {
+	newRule := filterRule.DeepCopy()
 	var originalPosition firewallapi.MatchDevPosition
 	foundPlaceholder := false
 
@@ -318,42 +306,86 @@ func expandNatNeq(natRule *firewallapi.NatRule, tunnels []string, nftconn *nftab
 		return newRule
 	}
 
-	setMatch := firewallapi.Match{
-		Op: firewallapi.MatchOperationNeq,
-		Set: &firewallapi.MatchSet{
-			Values:   tunnels,
-			Operator: firewallapi.MatchSetOperatorNin,
-			Position: originalPosition,
-		},
-	}
+	setMatch := buildSetMatch(tunnels, isNeq, originalPosition)
 
 	newRule.Match = append(filteredMatches, setMatch)
-
+    if nftconn != nil {
 	if _, err := registerSet(nftconn, tunnels, table); err != nil {
 		klog.Errorf("failed to register set: %v", err)
 	}
+    }
 
 	return newRule
 }
 
+// expandNatWithSet transforms a NAT rule targeting the generic "liqo-tunnel" placeholder into a set-based rule targeting the real interfaces.
+func expandNatWithSet(natRule *firewallapi.NatRule, tunnels []string, isNeq bool, nftconn *nftables.Conn, table *nftables.Table) *firewallapi.NatRule {
+    newRule := natRule.DeepCopy()
+    var originalPosition firewallapi.MatchDevPosition
+    foundPlaceholder := false
+
+    var filteredMatches []firewallapi.Match
+    for _, m := range newRule.Match {
+        if m.Dev != nil && m.Dev.Value == "liqo-tunnel" {
+            originalPosition = m.Dev.Position
+            foundPlaceholder = true
+            continue
+        }
+        filteredMatches = append(filteredMatches, m)
+    }
+
+    if !foundPlaceholder {
+        return newRule
+    }
+
+    setMatch := buildSetMatch(tunnels, isNeq, originalPosition)
+
+    newRule.Match = append(filteredMatches, setMatch)
+    if nftconn != nil {
+	if _, err := registerSet(nftconn, tunnels, table); err != nil {
+		klog.Errorf("failed to register set: %v", err)
+	}
+    }
+
+    return newRule
+}
+
+func buildSetMatch(tunnels []string, isNeq bool, position firewallapi.MatchDevPosition) firewallapi.Match {
+	setOp := firewallapi.MatchSetOperatorIn
+	matchOp := firewallapi.MatchOperationEq
+	if isNeq {
+		setOp = firewallapi.MatchSetOperatorNin
+		matchOp = firewallapi.MatchOperationNeq
+	}
+
+	return firewallapi.Match{
+		Op: matchOp,
+		Set: &firewallapi.MatchSet{
+			Values:   tunnels,
+			Operator: setOp,
+			Position: position,
+		},
+	}
+}
+
 func registerSet(nftconn *nftables.Conn, tunnels []string, table *nftables.Table) (*nftables.Set, error) {
 	setName := fmt.Sprintf("tunnel-list-%d", len(tunnels))
+
+	existingSets, err := nftconn.GetSets(table)
+	if err == nil {
+		for _, s := range existingSets {
+			if s.Name == setName {
+				klog.V(4).Infof("set %s already exists, skipping creation", setName)
+                return s, nil
+			}
+		}
+	}
 
 	namedSet := &nftables.Set{
 		Table:        table,
 		Name:         setName,
 		KeyType:      nftables.TypeIFName,
 		KeyByteOrder: binaryutil.NativeEndian,
-	}
-
-	existingSets, err := nftconn.GetSets(table)
-	if err == nil {
-		for _, s := range existingSets {
-			if s.Name == setName {
-				nftconn.DelSet(s)
-				break
-			}
-		}
 	}
 
 	var elements []nftables.SetElement
@@ -370,44 +402,6 @@ func registerSet(nftconn *nftables.Conn, tunnels []string, table *nftables.Table
 	return namedSet, nil
 }
 
-func ifname(n string) []byte {
-	b := make([]byte, 16)
-	copy(b, []byte(n+"\x00")) // aggiunge terminatore null e padding
-	return b
-}
-
-// expandNatEq generates a unique nat rule clone for a specific tunnel interface by updating the device match and the rule name.
-func expandNatEq(natRule *firewallapi.NatRule, tName string) *firewallapi.NatRule {
-	newRule := natRule.DeepCopy()
-	if natRule.Name != nil {
-		newName := fmt.Sprintf("%s-%s", *natRule.Name, tName)
-		newRule.Name = &newName
-	}
-	for i := range newRule.Match {
-		if newRule.Match[i].Dev != nil {
-			if newRule.Match[i].Dev.Value == "liqo-tunnel" {
-				newRule.Match[i].Dev.Value = tName
-			}
-		}
-	}
-
-	return newRule
-}
-
-// expandFilterEq generates a unique filter rule clone for a specific tunnel interface by updating the device match and the rule name.
-func expandFilterEq(filterRule *firewallapi.FilterRule, tName string) *firewallapi.FilterRule {
-	newRule := filterRule.DeepCopy()
-	if filterRule.Name != nil {
-		newName := fmt.Sprintf("%s-%s", *filterRule.Name, tName)
-		newRule.Name = &newName
-	}
-	for i := range newRule.Match {
-		if newRule.Match[i].Dev != nil && newRule.Match[i].Dev.Value == "liqo-tunnel" {
-			newRule.Match[i].Dev.Value = tName
-		}
-	}
-	return newRule
-}
 
 // cleanChain removes all the rules that are not present in the firewall configuration or that have been modified.
 func cleanChain(nftconn *nftables.Conn, chain *firewallapi.Chain, nftChain *nftables.Chain) error {
@@ -427,4 +421,11 @@ func cleanChain(nftconn *nftables.Conn, chain *firewallapi.Chain, nftChain *nfta
 		}
 	}
 	return nil
+}
+
+
+func ifname(n string) []byte {
+	b := make([]byte, 16)
+	copy(b, []byte(n+"\x00")) // aggiunge terminatore null e padding
+	return b
 }
