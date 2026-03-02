@@ -79,6 +79,7 @@ type WgGatewayServerSpec struct {
 	Deployment DeploymentTemplate `json:"deployment"`
 	// NumInterfaces specifies the number of interfaces for multi-tunnel.
 	// +kubebuilder:default=1
+	// +kubebuilder:validation:Minimum=1
 	NumInterfaces int32 `json:"numInterfaces,omitempty"`
 	// Metrics specifies the metrics configuration for the server.
 	Metrics *Metrics `json:"metrics,omitempty"`

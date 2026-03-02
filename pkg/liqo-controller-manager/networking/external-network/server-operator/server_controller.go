@@ -17,6 +17,7 @@ package serveroperator
 import (
 	"context"
 	"fmt"
+	"math/rand"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -126,6 +127,13 @@ func (r *ServerReconciler) EnsureGatewayServer(ctx context.Context, gwServer *ne
 	remoteClusterID, ok := gwServer.Labels[consts.RemoteClusterID]
 	if !ok {
 		return fmt.Errorf("missing label %q on GatewayServer %q", consts.RemoteClusterID, gwServer.Name)
+	}
+	modified, err := r.normalizePorts(ctx, gwServer)
+	if err != nil {
+		return err
+	}
+	if modified {
+		return nil
 	}
 
 	templateGV, err := schema.ParseGroupVersion(gwServer.Spec.ServerTemplateRef.APIVersion)
@@ -319,6 +327,53 @@ func (r *ServerReconciler) EnsureGatewayServer(ctx context.Context, gwServer *ne
 	}
 
 	return nil
+}
+
+func (r *ServerReconciler) normalizePorts(ctx context.Context, gw *networkingv1beta1.GatewayServer) (bool, error) {
+	modified := false
+
+	num := gw.Spec.NumInterfaces
+	current := int32(1 + len(gw.Spec.Endpoint.OtherPorts))
+
+	if num > current {
+		missing := num - current
+		for i := int32(0); i < missing; i++ {
+			var newPort int32
+			for {
+				newPort = 10000 + int32(rand.Intn(55000))
+				exists := false
+				if newPort == gw.Spec.Endpoint.Port {
+					exists = true
+				}
+				for _, p := range gw.Spec.Endpoint.OtherPorts {
+					if p == newPort {
+						exists = true
+						break
+					}
+				}
+
+				if !exists {
+					break
+				}
+			}
+
+			gw.Spec.Endpoint.OtherPorts = append(gw.Spec.Endpoint.OtherPorts, newPort)
+		}
+		modified = true
+	}
+	if num < current {
+		gw.Spec.Endpoint.OtherPorts = gw.Spec.Endpoint.OtherPorts[:num-1]
+		modified = true
+	}
+
+	if modified {
+		if err := r.Update(ctx, gw); err != nil {
+			return false, err
+		}
+		return true, nil
+	}
+
+	return false, nil
 }
 
 // SetupWithManager register the ServerReconciler to the manager.

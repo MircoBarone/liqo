@@ -9613,6 +9613,7 @@ spec:
                 description: NumInterfaces specifies the number of interfaces for
                   multi-tunnel.
                 format: int32
+                minimum: 1
                 type: integer
               secretRef:
                 description: |-
