@@ -86,12 +86,7 @@ func createLink(ctx context.Context, options *Options, idx int, interfaces int) 
 		}
 		defer wgcl.Close()
 
-		var listenPort int
-		if interfaces == 1 {
-			listenPort = options.ListenPort
-		} else {
-			listenPort = options.ListenPorts[idx]
-		}
+		listenPort := GetListenPort(options, idx, interfaces)
 
 		if err := wgcl.ConfigureDevice(tunnel.GetTunnelName(idx), wgtypes.Config{
 			ListenPort: &listenPort,
@@ -185,4 +180,20 @@ func CountWireguardInterfaces(opts *Options) int {
 	}
 
 	return 1
+}
+
+func GetListenPort(options *Options, idx int, interfaces int) int {
+	if interfaces == 1 {
+		return options.ListenPort
+	} else {
+		return options.ListenPorts[idx]
+	}
+}
+
+func GetEndpointPort(options *Options, idx int, interfaces int) int {
+	if interfaces == 1 {
+		return options.EndpointPort
+	} else {
+		return options.EndpointPorts[idx]
+	}
 }

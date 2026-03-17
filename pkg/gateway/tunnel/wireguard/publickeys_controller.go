@@ -79,9 +79,23 @@ func (r *PublicKeysReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, nil
 	}
 
-	if err := configureDevice(r.Wgcl, r.Options, wgtypes.Key(publicKey.Spec.PublicKey)); err != nil {
+	// Count interfaces for multitunnel
+	interfaces := CountWireguardInterfaces(r.Options)
+	correct := 0
+
+	for i := 0; i < interfaces; i++ {
+		if err := configureDevice(r.Wgcl, r.Options, wgtypes.Key(publicKey.Spec.PublicKey), i, interfaces); err != nil {
+			klog.Errorf("Failed to create WireGuard interface %d/%d: %v", i+1, interfaces, err)
+
+		} else {
+			correct++
+		}
+	}
+	if correct == 0 {
+		err := fmt.Errorf("unable to configure any WireGuard interface")
 		return ctrl.Result{}, err
 	}
+	klog.Infof("Successfully configured %d interfaces out of %d", correct, interfaces)
 
 	return ctrl.Result{}, EnsureConnection(ctx, r.Client, r.Scheme, r.Options)
 }
