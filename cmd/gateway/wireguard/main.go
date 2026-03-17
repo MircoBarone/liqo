@@ -148,9 +148,23 @@ func run(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("unable to load keys: %w", err)
 	}
 
+	// Count interfaces for multitunnel
+	interfaces := wireguard.CountWireguardInterfaces(options)
+
 	// Create the wg-liqo interface and init the wireguard configuration depending on the mode (client/server).
-	if err := wireguard.InitWireguardLink(cmd.Context(), options); err != nil {
-		return fmt.Errorf("unable to init wireguard link: %w", err)
+	correct := 0
+	for i := 0; i < interfaces; i++ {
+		if err := wireguard.InitWireguardLink(cmd.Context(), options, i, interfaces); err != nil {
+			klog.Errorf("Failed to create WireGuard interface %d/%d: %v", i+1, interfaces, err)
+		} else {
+			correct++
+		}
+	}
+
+	if correct == 0 {
+		return fmt.Errorf("unable to init any WireGuard interface")
+	} else {
+		klog.Infof("Successfully created %d interfaces out of %d", correct, interfaces)
 	}
 
 	// Create the Prometheus collector and register it inside the controller-runtime metrics server.
