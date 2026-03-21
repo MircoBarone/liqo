@@ -30,6 +30,7 @@ import (
 
 	"github.com/liqotech/liqo/pkg/gateway"
 	"github.com/liqotech/liqo/pkg/gateway/tunnel"
+	"github.com/liqotech/liqo/pkg/utils/kernel"
 )
 
 // InitWireguardLink inits the Wireguard interface.
@@ -196,4 +197,50 @@ func GetEndpointPort(options *Options, idx int, interfaces int) int {
 	} else {
 		return options.EndpointPorts[idx]
 	}
+}
+
+// Enable threaded NAPI for all WireGuard interfaces.
+// Retry up to 3 times per interface to handle transient failures.
+func EnsureThreadedNAPI(interfaces int) {
+	if !kernel.IsThreadedNAPISupported(tunnel.GetTunnelName(0)) {
+		klog.Info("Threaded NAPI not supported by this kernel, skipping setup")
+		return
+	}
+
+	if err := kernel.RemountSysfsRW(); err != nil {
+		klog.Errorf("Skipping threaded NAPI setup: %v", err)
+		return
+	}
+	defer kernel.RemountSysfsRO()
+
+	for i := 0; i < interfaces; i++ {
+		name := tunnel.GetTunnelName(i)
+
+		var err error
+		var changed bool
+		for attempt := 1; attempt <= 3; attempt++ {
+			changed, err = kernel.EnableWireguardThreadedMode(name)
+			if err == nil {
+				if changed {
+					klog.Infof("Threaded NAPI enabled for interface %s (attempt %d)", name, attempt)
+				} else {
+					klog.Infof("Threaded NAPI already enabled for interface %s", name)
+				}
+				break
+			}
+
+			if attempt < 3 {
+				klog.Warningf(
+					"Attempt %d: failed to enable threaded NAPI for interface %s: %v",
+					attempt, name, err,
+				)
+				time.Sleep(time.Duration(attempt) * 200 * time.Millisecond)
+			}
+		}
+
+		if err != nil {
+			klog.Errorf("Failed to enable threaded NAPI for interface %s after 3 attempts: %v", name, err)
+		}
+	}
+
 }
