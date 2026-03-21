@@ -85,7 +85,7 @@ func (r *PublicKeysReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 	for i := 0; i < interfaces; i++ {
 		if err := configureDevice(r.Wgcl, r.Options, wgtypes.Key(publicKey.Spec.PublicKey), i, interfaces); err != nil {
-			klog.Errorf("Failed to create WireGuard interface %d/%d: %v", i+1, interfaces, err)
+			klog.Errorf("Failed to configure WireGuard interface %d/%d: %v", i+1, interfaces, err)
 
 		} else {
 			correct++
@@ -96,6 +96,11 @@ func (r *PublicKeysReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, err
 	}
 	klog.Infof("Successfully configured %d interfaces out of %d", correct, interfaces)
+
+	// Enable threaded NAPI on kernel WireGuard interfaces only when running more than one tunnel.
+	if interfaces > 1 && r.Options.Implementation == WgImplementationKernel {
+		EnsureThreadedNAPI(interfaces)
+	}
 
 	return ctrl.Result{}, EnsureConnection(ctx, r.Client, r.Scheme, r.Options)
 }
