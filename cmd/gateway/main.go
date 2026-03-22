@@ -121,7 +121,8 @@ func run(cmd *cobra.Command, _ []string) error {
 	// Enable Multipath Hash Policy if required.
 	if connoptions.GwOptions.EnableMultipathHashPolicy {
 		if err = kernel.EnableMultipathHashPolicy(); err != nil {
-			klog.Warningf("Failed to enable multipath hash policy, ECMP will fall back to L3-only hashing (src/dst IP): flow distribution may be suboptimal: %v", err)
+			klog.Warningf("Failed to enable multipath hash policy, ECMP will fall back to L3-only hashing (src/dst IP): "+
+				"flow distribution may be suboptimal: %v", err)
 		}
 	}
 	// Set controller-runtime logger.
