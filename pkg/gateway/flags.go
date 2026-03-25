@@ -127,7 +127,7 @@ func InitFlags(flagset *pflag.FlagSet, opts *Options) {
 
 	flagset.BoolVar(&opts.DisableKernelVersionCheck, FlagNameDisableKernelVersionCheck.String(), false, "Disable the kernel version check")
 	flagset.Var(&opts.MinimumKernelVersion, FlagNameMinimumKernelVersion.String(), "Minimum kernel version required by Liqo")
-	flagset.BoolVar(&opts.EnableMultipathHashPolicy, FlagNameEnableMultipathHashPolicy.String(), false,
+	flagset.BoolVar(&opts.EnableMultipathHashPolicy, FlagNameEnableMultipathHashPolicy.String(), true,
 		"Set fib_multipath_hash_policy=1 to use 5-tuple hashing for multipath routing")
 }
 
