@@ -67,9 +67,23 @@ type ConnectionSpec struct {
 // ConnectionLatency represents the latency between two clusters.
 type ConnectionLatency struct {
 	// Value of the latency.
+	// In case of multitunnel, it represents the average latency.
 	Value string `json:"value,omitempty"`
+	// Maximum latency detected among the available interfaces.
+	// Used only in case of multitunnel
+	MaxValue string `json:"maxValue,omitempty"`
 	// Timestamp of the latency.
 	Timestamp metav1.Time `json:"timestamp,omitempty"`
+}
+
+// InterfaceStatus represents the status and metrics of a single tunnel interface.
+type InterfaceStatus struct {
+	// ID of the interface.
+	ID int `json:"id"`
+	// Status of the interface.
+	Status ConnectionStatusValue `json:"status"`
+	// Latency of the specific interface.
+	Latency string `json:"latency,omitempty"`
 }
 
 // ConnectionStatus defines the observed state of Connection.
@@ -78,6 +92,9 @@ type ConnectionStatus struct {
 	Value ConnectionStatusValue `json:"value,omitempty"`
 	// Latency of the connection.
 	Latency ConnectionLatency `json:"latency,omitempty"`
+	// Interfaces contains detailed status for each individual tunnel.
+	// Used only in case of multitunnel
+	Interfaces []InterfaceStatus `json:"interfaces,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -87,6 +104,7 @@ type ConnectionStatus struct {
 // +kubebuilder:printcolumn:name="Status",type=string,JSONPath=`.status.value`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 // +kubebuilder:printcolumn:name="Latency",type=string,JSONPath=`.status.latency.value`,priority=1
+// +kubebuilder:printcolumn:name="Max Latency",type=string,JSONPath=`.status.latency.maxValue`,priority=1
 
 // Connection contains the status of a connection between two clusters (a client and a server).
 type Connection struct {

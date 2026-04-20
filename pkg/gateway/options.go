@@ -51,6 +51,8 @@ type Options struct {
 
 	DisableKernelVersionCheck bool
 	MinimumKernelVersion      kernelversion.KernelVersion
+
+	NumInterfaces int
 }
 
 // NewOptions returns a new Options struct.

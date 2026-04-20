@@ -32,6 +32,10 @@ spec:
       name: Latency
       priority: 1
       type: string
+    - jsonPath: .status.latency.maxValue
+      name: Max Latency
+      priority: 1
+      type: string
     name: v1beta1
     schema:
       openAPIV3Schema:
@@ -114,15 +118,44 @@ spec:
           status:
             description: ConnectionStatus defines the observed state of Connection.
             properties:
+              interfaces:
+                description: |-
+                  Interfaces contains detailed status for each individual tunnel.
+                  Used only in case of multitunnel
+                items:
+                  description: InterfaceStatus represents the status and metrics of
+                    a single tunnel interface.
+                  properties:
+                    id:
+                      description: ID of the interface.
+                      type: integer
+                    latency:
+                      description: Latency of the specific interface.
+                      type: string
+                    status:
+                      description: Status of the interface.
+                      type: string
+                  required:
+                  - id
+                  - status
+                  type: object
+                type: array
               latency:
                 description: Latency of the connection.
                 properties:
+                  maxValue:
+                    description: |-
+                      Maximum latency detected among the available interfaces.
+                      Used only in case of multitunnel
+                    type: string
                   timestamp:
                     description: Timestamp of the latency.
                     format: date-time
                     type: string
                   value:
-                    description: Value of the latency.
+                    description: |-
+                      Value of the latency.
+                      In case of multitunnel, it represents the average latency.
                     type: string
                 type: object
               value:

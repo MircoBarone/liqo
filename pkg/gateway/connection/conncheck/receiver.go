@@ -28,8 +28,8 @@ import (
 
 // Peer represents a peer.
 type Peer struct {
-	connected bool
-	latency   time.Duration
+	Connected bool
+	Latency   time.Duration
 	// lastReceivedTimestamp is the timestamp when the last received PING has been sent.
 	lastReceivedTimestamp time.Time
 	updateCallback        UpdateFunc
@@ -37,21 +37,29 @@ type Peer struct {
 
 // Receiver is a receiver for conncheck messages.
 type Receiver struct {
-	peers map[string]*Peer
-	m     sync.RWMutex
-	buff  []byte
-	conn  *net.UDPConn
-	opts  *Options
+	peers                     map[string]map[int]*Peer
+	m                         sync.RWMutex
+	buff                      []byte
+	conn                      *net.UDPConn
+	opts                      *Options
+	multitunnelUpdateCallback MultitunnelUpdateFunc
 }
 
 // NewReceiver creates a new conncheck receiver.
 func NewReceiver(conn *net.UDPConn, opts *Options) *Receiver {
 	return &Receiver{
-		peers: make(map[string]*Peer),
+		peers: make(map[string]map[int]*Peer),
 		buff:  make([]byte, opts.PingBufferSize),
 		conn:  conn,
 		opts:  opts,
 	}
+}
+
+// SetMultitunnelUpdateCallback sets the callback for multitunnel status updates.
+func (r *Receiver) SetMultitunnelUpdateCallback(cb MultitunnelUpdateFunc) {
+	r.m.Lock()
+	defer r.m.Unlock()
+	r.multitunnelUpdateCallback = cb
 }
 
 // SendPong sends a PONG message to the given address.
@@ -73,32 +81,36 @@ func (r *Receiver) SendPong(raddr *net.UDPAddr, msg *Msg) error {
 func (r *Receiver) ReceivePong(msg *Msg) error {
 	r.m.Lock()
 	defer r.m.Unlock()
-	if peer, ok := r.peers[msg.ClusterID]; ok {
+	if peer, ok := r.peers[msg.ClusterID][msg.InterfaceID]; ok {
 		if msg.TimeStamp.Before(peer.lastReceivedTimestamp) {
 			klog.V(8).Infof("dropped a PONG message from %s because out-of-order", msg.ClusterID)
 			return nil
 		}
 		now := time.Now()
 		peer.lastReceivedTimestamp = msg.TimeStamp
-		peer.latency = now.Sub(msg.TimeStamp)
-		peer.connected = true
-
-		err := peer.updateCallback(true, peer.latency, now)
-		if err != nil {
-			return fmt.Errorf("failed to update peer %s: %w", msg.ClusterID, err)
+		peer.Latency = now.Sub(msg.TimeStamp)
+		peer.Connected = true
+		if peer.updateCallback != nil {
+			err := peer.updateCallback(true, peer.Latency, now)
+			if err != nil {
+				return fmt.Errorf("failed to update peer %s: %w", msg.ClusterID, err)
+			}
 		}
 		return nil
 	}
-	return fmt.Errorf("%s sender has not been initialized", msg.ClusterID)
+	return fmt.Errorf("%s(%d) sender has not been initialized", msg.ClusterID, msg.InterfaceID)
 }
 
 // InitPeer initializes a peer.
-func (r *Receiver) InitPeer(clusterID string, updateCallback UpdateFunc) error {
+func (r *Receiver) InitPeer(clusterID string, updateCallback UpdateFunc, interfaceID int) error {
 	r.m.Lock()
 	defer r.m.Unlock()
-	r.peers[clusterID] = &Peer{
-		connected:             false,
-		latency:               0,
+	if r.peers[clusterID] == nil {
+		r.peers[clusterID] = make(map[int]*Peer)
+	}
+	r.peers[clusterID][interfaceID] = &Peer{
+		Connected:             false,
+		Latency:               0,
 		lastReceivedTimestamp: time.Now(),
 		updateCallback:        updateCallback,
 	}
@@ -147,21 +159,67 @@ func (r *Receiver) RunDisconnectObserver(ctx context.Context) {
 		func(_ context.Context) (done bool, err error) {
 			r.m.Lock()
 			defer r.m.Unlock()
-			for id, peer := range r.peers {
-				if time.Since(peer.lastReceivedTimestamp.Add(peer.latency)) <= r.opts.PingInterval*time.Duration(r.opts.PingLossThreshold) {
-					continue
-				}
-				klog.V(8).Infof("conncheck receiver: %s unreachable", id)
-				peer.connected = false
-				peer.latency = 0
-				err := peer.updateCallback(false, 0, time.Time{})
-				if err != nil {
-					klog.Errorf("conncheck receiver: failed to update peer %s: %s", peer.lastReceivedTimestamp, err)
+			for clusterID, interfaces := range r.peers {
+				for ifaceID, peer := range interfaces {
+					if time.Since(peer.lastReceivedTimestamp.Add(peer.Latency)) <= r.opts.PingInterval*time.Duration(r.opts.PingLossThreshold) {
+						continue
+					}
+
+					klog.V(8).Infof("conncheck receiver: %s(%d) unreachable", clusterID, ifaceID)
+					peer.Connected = false
+					peer.Latency = 0
+					if peer.updateCallback != nil {
+						err := peer.updateCallback(false, 0, time.Time{})
+
+						if err != nil {
+							klog.Errorf("conncheck receiver: failed to update peer %s(%d) %s: %s", clusterID, ifaceID, peer.lastReceivedTimestamp, err)
+						}
+					}
 				}
 			}
 			return false, nil
 		})
 	if err != nil {
 		klog.Errorf("conncheck disconnect observer: %v", err)
+	}
+}
+
+// RunPeerMonitor starts the aggregator for multi-interface connections.
+func (r *Receiver) RunPeerMonitor(ctx context.Context) {
+	monitorInterval := r.opts.PingInterval * 5
+	klog.Infof("conncheck receiver peer monitor: started (interval: %v)", monitorInterval)
+
+	err := wait.PollUntilContextCancel(ctx, monitorInterval, true,
+		func(_ context.Context) (done bool, err error) {
+
+			snapshot := make(map[string]map[int]Peer)
+			var updateCallback MultitunnelUpdateFunc
+			r.m.RLock()
+			if len(r.peers) == 0 {
+				r.m.RUnlock()
+				return false, nil
+			}
+
+			for clusterID, interfaces := range r.peers {
+				snapshot[clusterID] = make(map[int]Peer)
+				for ifaceID, p := range interfaces {
+					snapshot[clusterID][ifaceID] = *p
+				}
+			}
+			if r.multitunnelUpdateCallback != nil {
+				updateCallback = r.multitunnelUpdateCallback
+			}
+			r.m.RUnlock()
+
+			if updateCallback != nil {
+				if err := updateCallback(time.Now(), snapshot); err != nil {
+					klog.V(2).Infof("failed to update connection status: %v", err)
+				}
+			}
+			return false, nil
+		})
+
+	if err != nil && ctx.Err() == nil {
+		klog.Errorf("conncheck peer monitor error: %v", err)
 	}
 }

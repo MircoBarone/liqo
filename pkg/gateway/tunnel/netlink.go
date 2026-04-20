@@ -77,14 +77,29 @@ func GetTunnelName(idx int) string {
 }
 
 // GetRemoteInterfaceIP returns the IP address of the remote Wireguard interface.
-func GetRemoteInterfaceIP(mode gateway.Mode) (string, error) {
+func GetRemoteInterfaceIP(mode gateway.Mode, idx int) (string, error) {
+	var base int
+
 	switch mode {
 	case gateway.ModeServer:
-		ip, err := netlink.ParseIPNet(ClientInterfaceIP)
-		return ip.IP.String(), err
+		if idx == 0 {
+			ip, err := netlink.ParseIPNet(ClientInterfaceIP)
+			return ip.IP.String(), err
+		}
+		base = 2
 	case gateway.ModeClient:
-		ip, err := netlink.ParseIPNet(ServerInterfaceIP)
-		return ip.IP.String(), err
+		if idx == 0 {
+			ip, err := netlink.ParseIPNet(ServerInterfaceIP)
+			return ip.IP.String(), err
+		}
+		base = 1
+	default:
+		return "", fmt.Errorf("invalid mode %v", mode)
 	}
-	return "", fmt.Errorf("invalid mode %v", mode)
+
+	totalOffset := (4 * idx) + base
+	thirdOctet := 18 + (totalOffset / 256)
+	fourthOctet := totalOffset % 256
+
+	return fmt.Sprintf("169.254.%d.%d", thirdOctet, fourthOctet), nil
 }

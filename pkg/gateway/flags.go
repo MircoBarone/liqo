@@ -77,6 +77,8 @@ const (
 	FlagNameDisableKernelVersionCheck FlagName = "disable-kernel-version-check"
 	// FlagNameMinimumKernelVersion is the minimum kernel version required by Liqo.
 	FlagNameMinimumKernelVersion FlagName = "minimum-kernel-version"
+	// FlagNameNumInterfaces is the number of WireGuard interfaces available to the gateway.
+	FlagNameNumInterfaces FlagName = "num-interfaces"
 )
 
 // RequiredFlags contains the list of the mandatory flags.
@@ -125,6 +127,7 @@ func InitFlags(flagset *pflag.FlagSet, opts *Options) {
 
 	flagset.BoolVar(&opts.DisableKernelVersionCheck, FlagNameDisableKernelVersionCheck.String(), false, "Disable the kernel version check")
 	flagset.Var(&opts.MinimumKernelVersion, FlagNameMinimumKernelVersion.String(), "Minimum kernel version required by Liqo")
+	flagset.IntVar(&opts.NumInterfaces, FlagNameNumInterfaces.String(), 1, "Number of WireGuard interfaces")
 }
 
 // MarkFlagsRequired marks the flags as required.

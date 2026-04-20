@@ -21,14 +21,16 @@ import (
 
 // Msg represents a message sent between two nodes.
 type Msg struct {
-	ClusterID string    `json:"clusterID"`
-	MsgType   MsgTypes  `json:"msgType"`
-	TimeStamp time.Time `json:"timeStamp"`
+	ClusterID   string    `json:"clusterID"`
+	InterfaceID int       `json:"interfaceID"`
+	MsgType     MsgTypes  `json:"msgType"`
+	TimeStamp   time.Time `json:"timeStamp"`
 }
 
 func (msg Msg) String() string {
-	return fmt.Sprintf("ClusterID: %s, MsgType: %s, Timestamp: %s",
+	return fmt.Sprintf("ClusterID: %s, InterfaceID: %d, MsgType: %s, Timestamp: %s",
 		msg.ClusterID,
+		msg.InterfaceID,
 		msg.MsgType,
 		msg.TimeStamp.Format("00:00:00.000000000"))
 }
@@ -45,3 +47,6 @@ const (
 
 // UpdateFunc is a function called when a Receiver gets a PONG or when a connection is declared failed.
 type UpdateFunc func(connected bool, latency time.Duration, time time.Time) error
+
+// MultitunnelUpdateFunc is a function called periodically when the status of multiple tunnels must be reported in the Connection resource
+type MultitunnelUpdateFunc func(time time.Time, snapshot map[string]map[int]Peer) error

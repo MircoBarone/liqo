@@ -69,7 +69,7 @@ func enforceRouteConfigurationPresence(ctx context.Context, cl client.Client, sc
 		return nil
 	}
 
-	remoteInterfaceIP, err := tunnel.GetRemoteInterfaceIP(mode)
+	remoteInterfaceIP, err := tunnel.GetRemoteInterfaceIP(mode, 0)
 	if err != nil {
 		return err
 	}
