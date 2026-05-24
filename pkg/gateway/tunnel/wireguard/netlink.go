@@ -15,17 +15,17 @@
 package wireguard
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
-	"os/exec"
-	"time"
 
 	"github.com/vishvananda/netlink"
+	"golang.zx2c4.com/wireguard/conn"
+	"golang.zx2c4.com/wireguard/device"
+	"golang.zx2c4.com/wireguard/ipc"
+	"golang.zx2c4.com/wireguard/tun"
 	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
-	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog/v2"
 
 	"github.com/liqotech/liqo/pkg/gateway"
@@ -33,7 +33,7 @@ import (
 )
 
 // InitWireguardLink inits the Wireguard interface.
-func InitWireguardLink(ctx context.Context, options *Options, idx int, port int) error {
+func InitWireguardLink(ctx context.Context, options *Options, idx, port int) error {
 	name := tunnel.GetTunnelName(idx)
 	exists, err := existsLink(idx)
 	if err != nil {
@@ -62,7 +62,7 @@ func InitWireguardLink(ctx context.Context, options *Options, idx int, port int)
 }
 
 // createLink creates a new Wireguard interface.
-func createLink(ctx context.Context, options *Options, idx int, port int) error {
+func createLink(ctx context.Context, options *Options, idx, port int) error {
 	var err error
 	klog.Infof("Selected wireguard %s implementation", options.Implementation)
 
@@ -110,18 +110,6 @@ func createLinkKernel(options *Options, idx int) error {
 		return fmt.Errorf("cannot add Wireguard interface %q: %w", tunnel.GetTunnelName(idx), err)
 	}
 	return nil
-}
-
-// runWgUserCmd runs the wg command with the given arguments.
-func runWgUserCmd(cmd *exec.Cmd) {
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		outStr, errStr := stdout.String(), stderr.String()
-		fmt.Printf("out:\n%s\nerr:\n%s\n", outStr, errStr)
-		klog.Fatalf("failed to run '%s': %v", cmd.String(), err)
-	}
 }
 
 // createLinkUserspace creates a new Wireguard interface using the userspace implementation (wireguard-go)

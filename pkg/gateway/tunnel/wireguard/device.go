@@ -26,7 +26,7 @@ import (
 	"github.com/liqotech/liqo/pkg/gateway/tunnel"
 )
 
-func configureDevice(wgcl *wgctrl.Client, options *Options, peerPubKey wgtypes.Key, idx int, port int) error {
+func configureDevice(wgcl *wgctrl.Client, options *Options, peerPubKey wgtypes.Key, idx, port int) error {
 	confdev := wgtypes.Config{
 		PrivateKey: &options.PrivateKey,
 		ListenPort: nil,
