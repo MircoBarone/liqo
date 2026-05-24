@@ -26,7 +26,7 @@ import (
 	"github.com/liqotech/liqo/pkg/gateway/tunnel"
 )
 
-func configureDevice(wgcl *wgctrl.Client, options *Options, peerPubKey wgtypes.Key) error {
+func configureDevice(wgcl *wgctrl.Client, options *Options, peerPubKey wgtypes.Key, idx int, port int) error {
 	confdev := wgtypes.Config{
 		PrivateKey: &options.PrivateKey,
 		ListenPort: nil,
@@ -41,18 +41,18 @@ func configureDevice(wgcl *wgctrl.Client, options *Options, peerPubKey wgtypes.K
 
 	switch options.GwOptions.Mode {
 	case gateway.ModeServer:
-		confdev.ListenPort = &options.ListenPort
+		confdev.ListenPort = &port
 	case gateway.ModeClient:
 		confdev.Peers[0].Endpoint = &net.UDPAddr{
 			IP:   options.EndpointIP,
-			Port: options.EndpointPort,
+			Port: port,
 		}
 	}
+	name := tunnel.GetTunnelName(idx)
+	klog.Infof("Configuring device %s", name)
 
-	klog.Infof("Configuring device %s", tunnel.TunnelInterfaceName)
-
-	if err := wgcl.ConfigureDevice(tunnel.TunnelInterfaceName, confdev); err != nil {
-		return fmt.Errorf("an error occurred while configuring the device: %w", err)
+	if err := wgcl.ConfigureDevice(name, confdev); err != nil {
+		return fmt.Errorf("an error occurred while configuring the device %q: %w", name, err)
 	}
 	return nil
 }
