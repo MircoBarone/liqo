@@ -35,6 +35,7 @@ const (
 	CtrlConfigurationRemapping = "configuration_remapping"
 	CtrlConfigurationRoute     = "configuration_route"
 	CtrlConnection             = "connection"
+	CtrlConnectionAggregator   = "connection_aggregator"
 	CtrlFirewallConfiguration  = "firewallconfiguration"
 	CtrlGatewayClientExternal  = "gatewayclient_external"
 	CtrlGatewayClientInternal  = "gatewayclient_internal"

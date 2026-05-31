@@ -65,11 +65,23 @@ type ConnectionSpec struct {
 }
 
 // ConnectionLatency represents the latency between two clusters.
+// +kubebuilder:object:generate=true
 type ConnectionLatency struct {
 	// Value of the latency.
 	Value string `json:"value,omitempty"`
 	// Timestamp of the latency.
-	Timestamp metav1.Time `json:"timestamp,omitempty"`
+	Timestamp *metav1.Time `json:"timestamp,omitempty"`
+}
+
+// TunnelStatus represents the status and metrics of a single tunnel.
+type TunnelStatus struct {
+	// InterfaceID is the name of the WireGuard interface (e.g. liqo-tunnel1, liqo-tunnel2).
+	// +kubebuilder:validation:Required
+	InterfaceID string `json:"interfaceID"`
+	// Value of the connection.
+	Value ConnectionStatusValue `json:"value,omitempty"`
+	// Latency of the connection.
+	Latency ConnectionLatency `json:"latency,omitempty"`
 }
 
 // ConnectionStatus defines the observed state of Connection.
@@ -78,6 +90,11 @@ type ConnectionStatus struct {
 	Value ConnectionStatusValue `json:"value,omitempty"`
 	// Latency of the connection.
 	Latency ConnectionLatency `json:"latency,omitempty"`
+	// Tunnels contains the status of each individual tunnel.
+	// +listType=map
+	// +listMapKey=interfaceID
+	// +optional
+	Tunnels []TunnelStatus `json:"tunnels,omitempty"`
 }
 
 // +kubebuilder:object:root=true

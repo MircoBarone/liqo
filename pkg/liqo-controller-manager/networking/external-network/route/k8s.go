@@ -69,10 +69,7 @@ func enforceRouteConfigurationPresence(ctx context.Context, cl client.Client, sc
 		return nil
 	}
 
-	remoteInterfaceIP, err := tunnel.GetRemoteInterfaceIP(mode)
-	if err != nil {
-		return err
-	}
+	remoteInterfaceIP := tunnel.GetRemoteInterfaceIP(mode, 0)
 
 	routecfg := &networkingv1beta1.RouteConfiguration{
 		ObjectMeta: metav1.ObjectMeta{

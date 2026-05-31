@@ -17,20 +17,21 @@ package wireguard
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/klog/v2"
+	//"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	networkingv1beta1 "github.com/liqotech/liqo/apis/networking/v1beta1"
 	"github.com/liqotech/liqo/pkg/consts"
 	"github.com/liqotech/liqo/pkg/gateway"
 	"github.com/liqotech/liqo/pkg/gateway/forge"
+	"github.com/liqotech/liqo/pkg/gateway/tunnel"
 	"github.com/liqotech/liqo/pkg/utils/resource"
 )
 
@@ -84,14 +85,15 @@ func CreateKeysSecret(ctx context.Context, cl client.Client, opts *gateway.Optio
 	return nil
 }
 
-// EnsureConnection creates or updates the connection resource.
+// EnsureConnection creates or updates the connection resource, prunes any stale tunnel entry left
+// over from a previous configuration, and (re)seeds the global status as Connecting.
 func EnsureConnection(ctx context.Context, cl client.Client, scheme *runtime.Scheme, opts *Options) error {
 	conn := &networkingv1beta1.Connection{ObjectMeta: metav1.ObjectMeta{
 		Name:      forge.GatewayResourceName(opts.GwOptions.Name),
 		Namespace: opts.GwOptions.Namespace,
 	}}
 
-	op, err := resource.CreateOrUpdate(ctx, cl, conn, func() error {
+	_, err := resource.CreateOrUpdate(ctx, cl, conn, func() error {
 		if conn.Labels == nil {
 			conn.Labels = make(map[string]string)
 		}
@@ -117,13 +119,92 @@ func EnsureConnection(ctx context.Context, cl client.Client, scheme *runtime.Sch
 	if err != nil {
 		return fmt.Errorf("creating or updating the connection: %w", err)
 	}
-	if op != controllerutil.OperationResultNone {
-		klog.Infof("Connection %q %s successfully", conn.Name, op)
+
+	if err := reconcileTunnelsStatus(ctx, cl, opts, conn); err != nil {
+		return fmt.Errorf("pruning stale tunnels: %w", err)
 	}
 
 	if conn.Status.Value == "" {
-		conn.Status.Value = networkingv1beta1.Connecting
-		return cl.Status().Update(ctx, conn)
+		bootstrap := &networkingv1beta1.Connection{
+			TypeMeta:   metav1.TypeMeta{APIVersion: networkingv1beta1.GroupVersion.String(), Kind: networkingv1beta1.ConnectionKind},
+			ObjectMeta: metav1.ObjectMeta{Name: conn.Name, Namespace: conn.Namespace},
+			Status:     networkingv1beta1.ConnectionStatus{Value: networkingv1beta1.Connecting},
+		}
+		return cl.Status().Patch(ctx, bootstrap, client.Apply,
+			client.FieldOwner("connection-bootstrap"),
+			client.ForceOwnership,
+		)
+	}
+	return nil
+}
+
+func reconcileTunnelsStatus(ctx context.Context, cl client.Client, opts *Options, conn *networkingv1beta1.Connection) error {
+
+	ports, err := GetWireguardPorts(opts)
+	if err != nil {
+		return fmt.Errorf("getting WireGuard ports: %w", err)
+	}
+	expected := make(map[string]struct{}, len(ports))
+	for i := range ports {
+		expected[tunnel.GetTunnelName(i)] = struct{}{}
+	}
+
+	actual := make(map[string]networkingv1beta1.TunnelStatus, len(conn.Status.Tunnels))
+	for _, t := range conn.Status.Tunnels {
+		actual[t.InterfaceID] = t
+	}
+
+	now := metav1.NewTime(time.Now())
+
+	for id := range expected {
+
+		desired := &networkingv1beta1.Connection{
+			TypeMeta: metav1.TypeMeta{
+				APIVersion: networkingv1beta1.GroupVersion.String(),
+				Kind:       networkingv1beta1.ConnectionKind,
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      conn.Name,
+				Namespace: conn.Namespace,
+			},
+			Status: networkingv1beta1.ConnectionStatus{
+				Tunnels: []networkingv1beta1.TunnelStatus{
+					{
+						InterfaceID: id,
+						Value:       networkingv1beta1.Connecting,
+						Latency: networkingv1beta1.ConnectionLatency{
+							Value:     "",
+							Timestamp: &now,
+						},
+					},
+				},
+			},
+		}
+
+		if err := cl.Status().Patch(ctx, desired, client.Apply, client.FieldOwner(id), client.ForceOwnership); err != nil {
+			return fmt.Errorf("reset tunnel %q: %w", id, err)
+		}
+	}
+	for id := range actual {
+
+		if _, ok := expected[id]; ok {
+			continue
+		}
+
+		release := &networkingv1beta1.Connection{
+			TypeMeta: metav1.TypeMeta{
+				APIVersion: networkingv1beta1.GroupVersion.String(),
+				Kind:       networkingv1beta1.ConnectionKind,
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      conn.Name,
+				Namespace: conn.Namespace,
+			},
+		}
+
+		if err := cl.Status().Patch(ctx, release, client.Apply, client.FieldOwner(id)); err != nil {
+			return fmt.Errorf("prune tunnel %q: %w", id, err)
+		}
 	}
 
 	return nil

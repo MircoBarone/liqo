@@ -108,6 +108,11 @@ func run(cmd *cobra.Command, _ []string) error {
 		}
 	}
 
+	// Check if the number of interfaces is valid (must be at least 1).
+	if connoptions.GwOptions.NumInterfaces < 1 {
+		return fmt.Errorf("invalid number of interfaces (%d): must be at least 1", connoptions.GwOptions.NumInterfaces)
+	}
+
 	// Enable ip_forwarding.
 	if err = kernel.EnableIPForwarding(); err != nil {
 		return err
@@ -191,6 +196,17 @@ func run(cmd *cobra.Command, _ []string) error {
 		if err = connr.SetupWithManager(mgr); err != nil {
 			return fmt.Errorf("unable to setup connections reconciler: %w", err)
 		}
+
+		// Setup the connection status aggregator controller.
+
+		if err = (&connection.ConnectionAggregatorReconciler{
+			Client:  mgr.GetClient(),
+			Scheme:  mgr.GetScheme(),
+			Options: connoptions,
+		}).SetupWithManager(mgr); err != nil {
+			return fmt.Errorf("unable to setup connection aggregator reconciler: %w", err)
+		}
+
 	}
 
 	rcr, err := route.NewRouteConfigurationReconcilerWithoutFinalizer(

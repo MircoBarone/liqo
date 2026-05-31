@@ -71,37 +71,39 @@ func (r *ConnectionsReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	connection := &networkingv1beta1.Connection{}
 	if err := r.Client.Get(ctx, req.NamespacedName, connection); err != nil {
 		if apierrors.IsNotFound(err) {
-			klog.V(6).Infof("There is no connection %s", req.String())
+			klog.Infof("There is no connection %s", req.String())
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, fmt.Errorf("unable to get the connection %q: %w", req.NamespacedName, err)
 	}
-	klog.V(4).Infof("Reconciling connection %q", req.NamespacedName)
+	klog.Infof("Reconciling connection %q", req.NamespacedName)
 
 	updateConnection := ForgeUpdateConnectionCallback(ctx, r.Client, r.Options, req)
 
 	switch r.Options.PingEnabled {
 	case true:
-		remoteIP, err := tunnel.GetRemoteInterfaceIP(r.Options.GwOptions.Mode)
-		if err != nil {
-			return ctrl.Result{}, fmt.Errorf("unable to get the remote interface IP: %w", err)
-		}
+		for i := range r.Options.GwOptions.NumInterfaces {
+			remoteIP := tunnel.GetRemoteInterfaceIP(r.Options.GwOptions.Mode, i)
 
-		err = r.ConnChecker.AddSender(ctx, r.Options.GwOptions.RemoteClusterID, remoteIP, updateConnection)
-		if err != nil {
-			switch err.(type) {
-			case *conncheck.DuplicateError:
-				return ctrl.Result{}, nil
-			default:
-				return ctrl.Result{}, fmt.Errorf("unable to add the sender: %w", err)
+			err := r.ConnChecker.AddSender(ctx, tunnel.GetTunnelName(i), remoteIP, updateConnection)
+			if err != nil {
+				switch err.(type) {
+				case *conncheck.DuplicateError:
+					continue
+				default:
+					return ctrl.Result{}, fmt.Errorf("unable to add the sender %q: %w", tunnel.GetTunnelName(i), err)
+				}
+			}
+
+			go r.ConnChecker.RunSender(tunnel.GetTunnelName(i))
+		}
+	case false:
+		for i := range r.Options.GwOptions.NumInterfaces {
+			if err := updateConnection(true, 0, time.Time{}, tunnel.GetTunnelName(i)); err != nil {
+				return ctrl.Result{}, fmt.Errorf("unable to update the connection status: %w", err)
 			}
 		}
 
-		go r.ConnChecker.RunSender(r.Options.GwOptions.RemoteClusterID)
-	case false:
-		if err := updateConnection(true, 0, time.Time{}); err != nil {
-			return ctrl.Result{}, fmt.Errorf("unable to update the connection status: %w", err)
-		}
 	}
 
 	return ctrl.Result{}, nil
@@ -122,9 +124,9 @@ func (r *ConnectionsReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-// ForgeUpdateConnectionCallback forges the UpdateConnectionStatus function.
+// ForgeUpdateConnectionCallback forges the UpdateTunnelStatus function.
 func ForgeUpdateConnectionCallback(ctx context.Context, cl client.Client, opts *Options, req ctrl.Request) conncheck.UpdateFunc {
-	return func(connected bool, latency time.Duration, timestamp time.Time) error {
+	return func(connected bool, latency time.Duration, timestamp time.Time, interfaceID string) error {
 		connection := &networkingv1beta1.Connection{}
 		if err := cl.Get(ctx, req.NamespacedName, connection); err != nil {
 			return err
@@ -136,6 +138,6 @@ func ForgeUpdateConnectionCallback(ctx context.Context, cl client.Client, opts *
 		case false:
 			connStatusValue = networkingv1beta1.ConnectionError
 		}
-		return UpdateConnectionStatus(ctx, cl, opts, connection, connStatusValue, latency, timestamp)
+		return UpdateTunnelStatus(ctx, cl, opts, connection, connStatusValue, latency, timestamp, interfaceID)
 	}
 }

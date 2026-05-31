@@ -29,7 +29,7 @@ import (
 type ConnChecker struct {
 	opts     *Options
 	receiver *Receiver
-	// key is the target cluster ID.
+	// key is the target interfaceID (the name of the interface)
 	senders        map[string]*Sender
 	runningSenders map[string]*Sender
 	sm             sync.RWMutex
@@ -68,106 +68,114 @@ func (c *ConnChecker) RunReceiverDisconnectObserver(ctx context.Context) {
 }
 
 // AddSender adds a sender.
-func (c *ConnChecker) AddSender(ctx context.Context, clusterID, ip string, updateCallback UpdateFunc) error {
+func (c *ConnChecker) AddSender(ctx context.Context, interfaceID, ip string, updateCallback UpdateFunc) error {
 	var err error
 
-	if clusterID == "" {
-		return fmt.Errorf("clusterID cannot be empty")
+	if interfaceID == "" {
+		return fmt.Errorf("interfaceID cannot be empty")
 	}
 
 	c.sm.Lock()
 	defer c.sm.Unlock()
 
-	if _, ok := c.senders[clusterID]; ok {
-		return NewDuplicateError(clusterID)
+	if _, ok := c.senders[interfaceID]; ok {
+		return NewDuplicateError(interfaceID)
 	}
 
 	ctxSender, cancelSender := context.WithCancel(ctx)
-	c.senders[clusterID], err = NewSender(ctxSender, c.opts, clusterID, cancelSender, c.conn, ip)
+	c.senders[interfaceID], err = NewSender(ctxSender, c.opts, interfaceID, cancelSender, c.conn, ip)
 	if err != nil {
-		return fmt.Errorf("failed to create sender: %w", err)
+		return fmt.Errorf("failed to create sender %q: %w", interfaceID, err)
 	}
 
-	err = c.receiver.InitPeer(clusterID, updateCallback)
+	err = c.receiver.InitPeer(interfaceID, updateCallback)
 	if err != nil {
 		return fmt.Errorf("failed to init peer: %w", err)
 	}
 
-	klog.Infof("conncheck sender %q added", clusterID)
+	klog.Infof("conncheck sender %q added", interfaceID)
 	return nil
 }
 
 // RunSender runs a sender.
-func (c *ConnChecker) RunSender(clusterID string) {
-	sender, err := c.setRunning(clusterID)
+func (c *ConnChecker) RunSender(interfaceID string) {
+	sender, err := c.setRunning(interfaceID)
 	if err != nil {
-		klog.Errorf("conncheck sender %s doesn't start for an error: %s", clusterID, err)
+		klog.Errorf("conncheck sender %s doesn't start for an error: %s", interfaceID, err)
 		return
 	}
 
-	klog.Infof("conncheck sender %q starting against %q", clusterID, sender.raddr.IP.String())
+	klog.Infof("conncheck sender %q starting against %q", interfaceID, sender.raddr.IP.String())
 
 	if err := wait.PollUntilContextCancel(sender.Ctx, c.opts.PingInterval, false, func(_ context.Context) (done bool, err error) {
-		err = c.senders[clusterID].SendPing()
+		err = c.senders[interfaceID].SendPing()
 		if err != nil {
 			klog.Warningf("failed to send ping: %s", err)
 		}
 		return false, nil
 	}); err != nil {
-		klog.Errorf("conncheck sender %s stopped for an error: %s", clusterID, err)
+		klog.Errorf("conncheck sender %s stopped for an error: %s", interfaceID, err)
 	}
 
-	klog.Infof("conncheck sender %s stopped", clusterID)
+	klog.Infof("conncheck sender %s stopped", interfaceID)
 }
 
 // DelAndStopSender stops and deletes a sender. If sender has been already stoped and deleted is a no-op function.
-func (c *ConnChecker) DelAndStopSender(clusterID string) {
+func (c *ConnChecker) DelAndStopSender(interfaceID string) {
 	c.sm.Lock()
 	defer c.sm.Unlock()
 
-	c.receiver.m.Lock()
-	defer c.receiver.m.Unlock()
+	c.receiver.mMu.Lock()
+	defer c.receiver.mMu.Unlock()
 
-	if _, ok := c.senders[clusterID]; ok {
-		c.senders[clusterID].cancel()
-		delete(c.senders, clusterID)
+	if _, ok := c.senders[interfaceID]; ok {
+		c.senders[interfaceID].cancel()
+		delete(c.senders, interfaceID)
 	}
 
-	delete(c.runningSenders, clusterID)
-	delete(c.receiver.peers, clusterID)
+	delete(c.runningSenders, interfaceID)
+	delete(c.receiver.peers, interfaceID)
 }
 
-// GetLatency returns the latency with clusterID.
-func (c *ConnChecker) GetLatency(clusterID string) (time.Duration, error) {
-	c.receiver.m.RLock()
-	defer c.receiver.m.RUnlock()
-	if peer, ok := c.receiver.peers[clusterID]; ok {
-		return peer.latency, nil
-	}
-	return 0, fmt.Errorf("sender %s not found", clusterID)
-}
-
-// GetConnected returns the connection status with clusterID.
-func (c *ConnChecker) GetConnected(clusterID string) (bool, error) {
-	c.receiver.m.RLock()
-	defer c.receiver.m.RUnlock()
-	if peer, ok := c.receiver.peers[clusterID]; ok {
-		return peer.connected, nil
-	}
-	return false, fmt.Errorf("sender %s not found", clusterID)
-}
-
-func (c *ConnChecker) setRunning(clusterID string) (*Sender, error) {
-	c.sm.Lock()
-	defer c.sm.Unlock()
-	sender, ok := c.senders[clusterID]
+// GetLatency returns the latency with interfaceID.
+func (c *ConnChecker) GetLatency(interfaceID string) (time.Duration, error) {
+	c.receiver.mMu.RLock()
+	peer, ok := c.receiver.peers[interfaceID]
+	c.receiver.mMu.RUnlock()
 	if !ok {
-		return nil, fmt.Errorf("sender %s not found", clusterID)
+		return 0, fmt.Errorf("sender %s not found", interfaceID)
 	}
 
-	if _, ok := c.runningSenders[clusterID]; ok {
-		return nil, fmt.Errorf("sender %s already running", clusterID)
+	peer.pMu.Lock()
+	defer peer.pMu.Unlock()
+	return peer.latency, nil
+}
+
+// GetConnected returns the connection status with interfaceID.
+func (c *ConnChecker) GetConnected(interfaceID string) (bool, error) {
+	c.receiver.mMu.RLock()
+	peer, ok := c.receiver.peers[interfaceID]
+	c.receiver.mMu.RUnlock()
+	if !ok {
+		return false, fmt.Errorf("sender %s not found", interfaceID)
 	}
-	c.runningSenders[clusterID] = sender
+
+	peer.pMu.Lock()
+	defer peer.pMu.Unlock()
+	return peer.connected, nil
+}
+
+func (c *ConnChecker) setRunning(interfaceID string) (*Sender, error) {
+	c.sm.Lock()
+	defer c.sm.Unlock()
+	sender, ok := c.senders[interfaceID]
+	if !ok {
+		return nil, fmt.Errorf("sender %s not found", interfaceID)
+	}
+
+	if _, ok := c.runningSenders[interfaceID]; ok {
+		return nil, fmt.Errorf("sender %s already running", interfaceID)
+	}
+	c.runningSenders[interfaceID] = sender
 	return sender, nil
 }

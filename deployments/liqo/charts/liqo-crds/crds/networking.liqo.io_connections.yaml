@@ -125,6 +125,37 @@ spec:
                     description: Value of the latency.
                     type: string
                 type: object
+              tunnels:
+                description: Tunnels contains the status of each individual tunnel.
+                items:
+                  description: TunnelStatus represents the status and metrics of a
+                    single tunnel.
+                  properties:
+                    interfaceID:
+                      description: InterfaceID is the name of the WireGuard interface
+                        (e.g. liqo-tunnel1, liqo-tunnel2).
+                      type: string
+                    latency:
+                      description: Latency of the connection.
+                      properties:
+                        timestamp:
+                          description: Timestamp of the latency.
+                          format: date-time
+                          type: string
+                        value:
+                          description: Value of the latency.
+                          type: string
+                      type: object
+                    value:
+                      description: Value of the connection.
+                      type: string
+                  required:
+                  - interfaceID
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - interfaceID
+                x-kubernetes-list-type: map
               value:
                 description: Value of the connection.
                 type: string
