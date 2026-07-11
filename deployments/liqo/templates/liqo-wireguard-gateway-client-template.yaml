@@ -171,7 +171,7 @@ spec:
                     add:
                     - NET_ADMIN
                     - NET_RAW
-                    - SYS_ADMIN
+                    - "{{ "{{ if gt (len .Spec.Endpoint.Ports) 1 }}SYS_ADMIN{{ else }}NET_RAW{{ end }}" }}"
                   {{ if .Values.networking.gatewayTemplates.wireguard.implementation | eq "userspace" }}
                   privileged: true
                   {{ end }}

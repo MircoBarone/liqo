@@ -36,8 +36,8 @@ var GatewayServerGroupResource = schema.GroupResource{Group: GroupVersion.Group,
 var GatewayServerGroupVersionResource = GroupVersion.WithResource(GatewayServerResource)
 
 // Endpoint defines the endpoint of the gatewayserver.
-// +kubebuilder:validation:XValidation:rule="!(has(self.port)&&has(self.ports)&&self.port!=self.ports[0])",message="port must match ports[0]"
-// +kubebuilder:validation:XValidation:rule="!(has(self.nodePort)&&has(self.nodePorts)&&self.nodePort!=self.nodePorts[0])",message="nodePort must match nodePorts[0]"
+// +kubebuilder:validation:XValidation:rule="!(has(self.port) && has(self.ports))",message="port and ports are mutually exclusive"
+// +kubebuilder:validation:XValidation:rule="!(has(self.nodePort) && has(self.nodePorts))",message="nodePort and nodePorts are mutually exclusive"
 // +kubebuilder:validation:XValidation:rule="has(self.port) || (has(self.ports) && size(self.ports) > 0)",message="at least one of port or ports must be set"
 // +kubebuilder:validation:XValidation:rule="!(has(self.ports)) || self.ports.all(p, self.ports.filter(q, q == p).size() == 1)",message="ports must not contain duplicates"
 // +kubebuilder:validation:XValidation:rule="!(has(self.nodePorts)) || self.nodePorts.all(p, self.nodePorts.filter(q, q == p).size() == 1)",message="nodePorts must not contain duplicates"
@@ -90,7 +90,7 @@ type GatewayServerSpec struct {
 }
 
 // EndpointStatus defines the observed state of the endpoint.
-// +kubebuilder:validation:XValidation:rule="!(has(self.port)&&has(self.ports)&&self.port!=self.ports[0])",message="port must match ports[0]"
+// +kubebuilder:validation:XValidation:rule="!(has(self.port) && has(self.ports))",message="port and ports are mutually exclusive"
 // +kubebuilder:validation:XValidation:rule="has(self.port) || (has(self.ports) && size(self.ports) > 0)",message="at least one of port or ports must be set"
 // +kubebuilder:validation:XValidation:rule="!(has(self.ports)) || self.ports.all(p, self.ports.filter(q, q == p).size() == 1)",message="ports must not contain duplicates"
 //

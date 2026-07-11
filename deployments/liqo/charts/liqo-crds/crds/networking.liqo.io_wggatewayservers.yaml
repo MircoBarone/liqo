@@ -10464,8 +10464,8 @@ spec:
                     type: string
                 type: object
                 x-kubernetes-validations:
-                - message: port must match ports[0]
-                  rule: '!(has(self.port)&&has(self.ports)&&self.port!=self.ports[0])'
+                - message: port and ports are mutually exclusive
+                  rule: '!(has(self.port) && has(self.ports))'
                 - message: at least one of port or ports must be set
                   rule: has(self.port) || (has(self.ports) && size(self.ports) > 0)
                 - message: ports must not contain duplicates
