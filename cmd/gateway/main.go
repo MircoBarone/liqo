@@ -199,7 +199,7 @@ func run(cmd *cobra.Command, _ []string) error {
 
 		// Setup the connection status aggregator controller.
 
-		if err = (&connection.ConnectionAggregatorReconciler{
+		if err = (&connection.AggregatorReconciler{
 			Client:  mgr.GetClient(),
 			Scheme:  mgr.GetScheme(),
 			Options: connoptions,

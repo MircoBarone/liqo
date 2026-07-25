@@ -88,8 +88,6 @@ func (r *Receiver) ReceivePong(msg *Msg) error {
 	peer.lastReceivedTimestamp = msg.TimeStamp
 	peer.latency = now.Sub(msg.TimeStamp)
 	peer.connected = true
-	/*klog.Infof("Receiver: Peer %s updated. Latency: %v, Timestamp: %v",
-	msg.InterfaceID, peer.latency, msg.TimeStamp)*/
 	if err := peer.updateCallback(true, peer.latency, now, msg.InterfaceID); err != nil {
 		return fmt.Errorf("failed to update peer %s: %w", msg.InterfaceID, err)
 	}

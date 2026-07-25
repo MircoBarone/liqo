@@ -24,7 +24,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	//"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	networkingv1beta1 "github.com/liqotech/liqo/apis/networking/v1beta1"
@@ -130,6 +129,7 @@ func EnsureConnection(ctx context.Context, cl client.Client, scheme *runtime.Sch
 			ObjectMeta: metav1.ObjectMeta{Name: conn.Name, Namespace: conn.Namespace},
 			Status:     networkingv1beta1.ConnectionStatus{Value: networkingv1beta1.Connecting},
 		}
+		//nolint:staticcheck // Keep SSA until ApplyConfiguration migration.
 		return cl.Status().Patch(ctx, bootstrap, client.Apply,
 			client.FieldOwner("connection-bootstrap"),
 			client.ForceOwnership,
@@ -139,7 +139,6 @@ func EnsureConnection(ctx context.Context, cl client.Client, scheme *runtime.Sch
 }
 
 func reconcileTunnelsStatus(ctx context.Context, cl client.Client, opts *Options, conn *networkingv1beta1.Connection) error {
-
 	ports, err := GetWireguardPorts(opts)
 	if err != nil {
 		return fmt.Errorf("getting WireGuard ports: %w", err)
@@ -157,7 +156,6 @@ func reconcileTunnelsStatus(ctx context.Context, cl client.Client, opts *Options
 	now := metav1.NewTime(time.Now())
 
 	for id := range expected {
-
 		desired := &networkingv1beta1.Connection{
 			TypeMeta: metav1.TypeMeta{
 				APIVersion: networkingv1beta1.GroupVersion.String(),
@@ -180,13 +178,12 @@ func reconcileTunnelsStatus(ctx context.Context, cl client.Client, opts *Options
 				},
 			},
 		}
-
+		//nolint:staticcheck // Keep SSA until ApplyConfiguration migration.
 		if err := cl.Status().Patch(ctx, desired, client.Apply, client.FieldOwner(id), client.ForceOwnership); err != nil {
 			return fmt.Errorf("reset tunnel %q: %w", id, err)
 		}
 	}
 	for id := range actual {
-
 		if _, ok := expected[id]; ok {
 			continue
 		}
@@ -201,7 +198,7 @@ func reconcileTunnelsStatus(ctx context.Context, cl client.Client, opts *Options
 				Namespace: conn.Namespace,
 			},
 		}
-
+		//nolint:staticcheck // Keep SSA until ApplyConfiguration migration.
 		if err := cl.Status().Patch(ctx, release, client.Apply, client.FieldOwner(id)); err != nil {
 			return fmt.Errorf("prune tunnel %q: %w", id, err)
 		}

@@ -291,6 +291,7 @@ func FakeConfiguration(remoteClusterID, podCIDR, extCIDR, remotePodCIDR, remoteE
 
 // FakeConnection returns a fake Connection.
 func FakeConnection(remoteClusterID string) *networkingv1beta1.Connection {
+	now := metav1.Now()
 	return &networkingv1beta1.Connection{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "fake-connection",
@@ -305,7 +306,7 @@ func FakeConnection(remoteClusterID string) *networkingv1beta1.Connection {
 		Status: networkingv1beta1.ConnectionStatus{
 			Latency: networkingv1beta1.ConnectionLatency{
 				Value:     "fake-latency",
-				Timestamp: metav1.Now(),
+				Timestamp: &now,
 			},
 			Value: networkingv1beta1.Connected,
 		},

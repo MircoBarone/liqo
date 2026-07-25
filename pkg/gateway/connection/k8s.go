@@ -54,7 +54,6 @@ func UpdateConnectionStatus(ctx context.Context, cl client.Client, opts *Options
 // UpdateTunnelStatus updates the status of a single tunnel using SSA.
 func UpdateTunnelStatus(ctx context.Context, cl client.Client, opts *Options, connection *networkingv1beta1.Connection,
 	value networkingv1beta1.ConnectionStatusValue, latency time.Duration, timestamp time.Time, interfaceID string) error {
-
 	if !shouldUpdateTunnelStatus(connection, interfaceID, value, timestamp, opts) {
 		return nil
 	}
@@ -85,14 +84,14 @@ func UpdateTunnelStatus(ctx context.Context, cl client.Client, opts *Options, co
 			},
 		},
 	}
-
+	//nolint:staticcheck // Keep SSA until ApplyConfiguration migration.
 	return cl.Status().Patch(ctx, patch, client.Apply,
 		client.FieldOwner(interfaceID),
-		//client.ForceOwnership,
 	)
 }
 
-func shouldUpdateTunnelStatus(connection *networkingv1beta1.Connection, interfaceID string, value networkingv1beta1.ConnectionStatusValue, timestamp time.Time, opts *Options) bool {
+func shouldUpdateTunnelStatus(connection *networkingv1beta1.Connection, interfaceID string,
+	value networkingv1beta1.ConnectionStatusValue, timestamp time.Time, opts *Options) bool {
 	var lastTime time.Time
 	var lastValue networkingv1beta1.ConnectionStatusValue
 	found := false
@@ -118,9 +117,9 @@ func shouldUpdateTunnelStatus(connection *networkingv1beta1.Connection, interfac
 
 // UpdateConnectionStatusAggregated updates the global connection status and average latency using SSA.
 // This function ensures the aggregator only manages global fields, preserving individual tunnel data.
-func UpdateConnectionStatusAggregated(ctx context.Context, cl client.Client, opts *Options, connection *networkingv1beta1.Connection,
+func UpdateConnectionStatusAggregated(ctx context.Context, cl client.Client,
+	connection *networkingv1beta1.Connection,
 	value networkingv1beta1.ConnectionStatusValue, latency time.Duration, timestamp time.Time) error {
-	/*klog.Infof("Called UpdateConnectionStatusAggregated")*/
 	var ts *metav1.Time
 	if !timestamp.IsZero() {
 		t := metav1.NewTime(timestamp)
@@ -144,6 +143,7 @@ func UpdateConnectionStatusAggregated(ctx context.Context, cl client.Client, opt
 			},
 		},
 	}
+	//nolint:staticcheck // Keep SSA until ApplyConfiguration migration.
 	if err := cl.Status().Patch(ctx, patch, client.Apply,
 		client.FieldOwner(consts.CtrlConnectionAggregator),
 		client.ForceOwnership,

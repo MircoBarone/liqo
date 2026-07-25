@@ -33,15 +33,15 @@ import (
 	"github.com/liqotech/liqo/pkg/consts"
 )
 
-// ConnectionAggregatorReconciler coordinates the status aggregation across multiple tunnels.
-type ConnectionAggregatorReconciler struct {
+// AggregatorReconciler coordinates the status aggregation across multiple tunnels.
+type AggregatorReconciler struct {
 	Client  client.Client
 	Scheme  *runtime.Scheme
 	Options *Options
 }
 
 // Reconcile triggers whenever a Connection resource changes.
-func (r *ConnectionAggregatorReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *AggregatorReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	connection := &networkingv1beta1.Connection{}
 	if err := r.Client.Get(ctx, req.NamespacedName, connection); err != nil {
 		if apierrors.IsNotFound(err) {
@@ -67,7 +67,6 @@ func (r *ConnectionAggregatorReconciler) Reconcile(ctx context.Context, req ctrl
 	if !hasError {
 		for i := range tunnels {
 			switch tunnels[i].Value {
-
 			case networkingv1beta1.ConnectionError:
 				hasError = true
 
@@ -91,17 +90,18 @@ func (r *ConnectionAggregatorReconciler) Reconcile(ctx context.Context, req ctrl
 	var globalLatency time.Duration
 	var globalTimestamp time.Time
 
-	if hasError {
+	switch {
+	case hasError:
 		globalValue = networkingv1beta1.ConnectionError
 		globalLatency = 0
 		globalTimestamp = time.Time{}
 
-	} else if isConnecting {
+	case isConnecting:
 		globalValue = networkingv1beta1.Connecting
 		globalLatency = 0
 		globalTimestamp = time.Now()
 
-	} else {
+	default:
 		globalValue = networkingv1beta1.Connected
 
 		if expectedInterfaces > 0 {
@@ -116,7 +116,6 @@ func (r *ConnectionAggregatorReconciler) Reconcile(ctx context.Context, req ctrl
 	err := UpdateConnectionStatusAggregated(
 		ctx,
 		r.Client,
-		r.Options,
 		connection,
 		globalValue,
 		globalLatency,
@@ -129,8 +128,8 @@ func (r *ConnectionAggregatorReconciler) Reconcile(ctx context.Context, req ctrl
 	return ctrl.Result{}, nil
 }
 
-// SetupWithManager registers the ConnectionAggregator to the manager.
-func (r *ConnectionAggregatorReconciler) SetupWithManager(mgr ctrl.Manager) error {
+// SetupWithManager registers the Aggregator to the manager.
+func (r *AggregatorReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	filterByLabelsPredicate, err := predicate.LabelSelectorPredicate(metav1.LabelSelector{
 		MatchLabels: map[string]string{
 			string(consts.RemoteClusterID): r.Options.GwOptions.RemoteClusterID,
@@ -145,16 +144,16 @@ func (r *ConnectionAggregatorReconciler) SetupWithManager(mgr ctrl.Manager) erro
 			oldConn := e.ObjectOld.(*networkingv1beta1.Connection)
 			newConn := e.ObjectNew.(*networkingv1beta1.Connection)
 
-			if !newConn.ObjectMeta.DeletionTimestamp.IsZero() {
+			if !newConn.DeletionTimestamp.IsZero() {
 				return false
 			}
 
 			return !tunnelsAreEqual(oldConn.Status.Tunnels, newConn.Status.Tunnels)
 		},
-		CreateFunc: func(e event.CreateEvent) bool {
+		CreateFunc: func(_ event.CreateEvent) bool {
 			return true
 		},
-		DeleteFunc: func(e event.DeleteEvent) bool {
+		DeleteFunc: func(_ event.DeleteEvent) bool {
 			return false
 		},
 	}
