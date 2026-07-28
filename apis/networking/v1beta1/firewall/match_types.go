@@ -18,10 +18,18 @@ package firewall
 type MatchOperation string
 
 const (
-	// MatchOperationEq is the operation of the match.
+	// MatchOperationEq is the equality operation
+	// (can be used with IP, Port, Proto, Dev).
 	MatchOperationEq MatchOperation = "eq"
-	// MatchOperationNeq is the operation of the match.
+	// MatchOperationNeq is the inequality operation
+	// (can be used for IP, Port, Proto, Dev).
 	MatchOperationNeq MatchOperation = "neq"
+	// MatchOperationIn indicates the element must be part of the set.
+	// (Use only with Set)
+	MatchOperationIn MatchOperation = "in"
+	// MatchOperationNin indicates the element must not be part of the set.
+	// (Use only with Set)
+	MatchOperationNin MatchOperation = "nin"
 )
 
 // MatchPosition is the position of the IP in the packet.
@@ -97,11 +105,23 @@ type MatchProto struct {
 	Value L4Proto `json:"value"`
 }
 
+// MatchSet is a set of devices to be matched.
+// It is an extensions of MatchDev struct
+// +kubebuilder:object:generate=true
+type MatchSet struct {
+	// Values are the names of the device to be matched.
+	Values []string `json:"values"`
+	// Position is the source device of the packet. (in or out)
+	// +kubebuilder:validation:Enum=in;out
+	Position MatchDevPosition `json:"position"`
+}
+
 // Match is a match to be applied to a rule.
 // +kubebuilder:object:generate=true
 type Match struct {
 	// Op is the operation of the match.
-	// +kubebuilder:validation:Enum=eq;neq
+	// Use 'eq'/'neq' for IP, Port, Proto, Dev. Use 'in'/'nin' for Set.
+	// +kubebuilder:validation:Enum=eq;neq;in;nin
 	Op MatchOperation `json:"op"`
 	// IP contains the options to match an IP or a Subnet.
 	IP *MatchIP `json:"ip,omitempty"`
@@ -111,4 +131,6 @@ type Match struct {
 	Proto *MatchProto `json:"proto,omitempty"`
 	// Dev contains the options to match a device.
 	Dev *MatchDev `json:"dev,omitempty"`
+	// Set contains the options to match a set of devices.
+	Set *MatchSet `json:"set,omitempty"`
 }

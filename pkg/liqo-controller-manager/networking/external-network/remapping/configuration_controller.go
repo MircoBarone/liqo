@@ -25,9 +25,15 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
+	liqov1beta1 "github.com/liqotech/liqo/apis/core/v1beta1"
 	networkingv1beta1 "github.com/liqotech/liqo/apis/networking/v1beta1"
 	"github.com/liqotech/liqo/pkg/consts"
+	tunnel "github.com/liqotech/liqo/pkg/gateway/tunnel"
+	route "github.com/liqotech/liqo/pkg/liqo-controller-manager/networking/external-network/route"
 	networkingutils "github.com/liqotech/liqo/pkg/liqo-controller-manager/networking/utils"
 )
 
@@ -36,6 +42,8 @@ import (
 // +kubebuilder:rbac:groups=networking.liqo.io,resources=configurations/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=networking.liqo.io,resources=firewallconfigurations,verbs=get;list;create;delete;update;watch
 // +kubebuilder:rbac:groups=networking.liqo.io,resources=firewallconfigurations/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=networking.liqo.io,resources=gatewayclients,verbs=get;list;watch
+// +kubebuilder:rbac:groups=networking.liqo.io,resources=gatewayservers,verbs=get;list;watch
 
 // RemappingReconciler updates the PublicKey resource used to establish the Wireguard configuration.
 //
@@ -71,12 +79,21 @@ func (r *RemappingReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}
 		return ctrl.Result{}, fmt.Errorf("unable to get the configuration %q: %w", req.NamespacedName, err)
 	}
-	klog.V(4).Infof("Reconciling configuration %q", req.NamespacedName)
+	remoteClusterID := liqov1beta1.ClusterID(conf.Labels[string(consts.RemoteClusterID)])
+	interfaces, err := route.GetGatewayInterfaces(ctx, r.Client, remoteClusterID)
+	if err != nil {
+		klog.Errorf("unable to get gateway interfaces for configuration %q: %v", req.String(), err)
+	} else {
+		tunnelNames := make([]string, len(interfaces))
+		for i := range interfaces {
+			tunnelNames[i] = tunnel.GetTunnelName(i)
+		}
+		klog.Infof("configuration %q has %d tunnel interface(s): %v", req.String(), len(tunnelNames), tunnelNames)
+	}
 	if err := CreateOrUpdateNatMappingCIDR(ctx, r.Client, r.Options, conf,
 		r.Scheme, PodCIDR); err != nil {
 		return ctrl.Result{}, err
 	}
-
 	if err := CreateOrUpdateNatMappingCIDR(ctx, r.Client, r.Options, conf, r.Scheme, ExternalCIDR); err != nil {
 		return ctrl.Result{}, err
 	}
@@ -88,5 +105,43 @@ func (r *RemappingReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 func (r *RemappingReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).Named(consts.CtrlConfigurationRemapping).
 		For(&networkingv1beta1.Configuration{}, builder.WithPredicates(networkingutils.AreConfigurationNetworkCIDRsConfiguredPredicate())).
+		Watches(
+			&networkingv1beta1.GatewayClient{},
+			handler.EnqueueRequestsFromMapFunc(r.mapGatewayToConfiguration),
+			builder.WithPredicates(predicate.GenerationChangedPredicate{}),
+		).
+		Watches(
+			&networkingv1beta1.GatewayServer{},
+			handler.EnqueueRequestsFromMapFunc(r.mapGatewayToConfiguration),
+			builder.WithPredicates(predicate.GenerationChangedPredicate{}),
+		).
 		Complete(r)
+}
+
+// mapGatewayToConfiguration maps a GatewayClient/GatewayServer event to the Configuration
+// sharing the same RemoteClusterID, so that a change in the number of interfaces
+// re-triggers the NAT remapping logic even though the Configuration itself is unchanged.
+func (r *RemappingReconciler) mapGatewayToConfiguration(ctx context.Context, obj client.Object) []reconcile.Request {
+	remoteClusterID, ok := obj.GetLabels()[string(consts.RemoteClusterID)]
+	if !ok {
+		klog.V(4).Infof("object %q has no RemoteClusterID label, skipping", client.ObjectKeyFromObject(obj))
+		return nil
+	}
+
+	confList := &networkingv1beta1.ConfigurationList{}
+	if err := r.Client.List(ctx, confList,
+		client.InNamespace(obj.GetNamespace()),
+		client.MatchingLabels{string(consts.RemoteClusterID): remoteClusterID},
+	); err != nil {
+		klog.Errorf("unable to list configurations for remote cluster %q: %v", remoteClusterID, err)
+		return nil
+	}
+
+	requests := make([]reconcile.Request, 0, len(confList.Items))
+	for i := range confList.Items {
+		requests = append(requests, reconcile.Request{
+			NamespacedName: client.ObjectKeyFromObject(&confList.Items[i]),
+		})
+	}
+	return requests
 }
