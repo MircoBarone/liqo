@@ -82,19 +82,18 @@ func (r *RemappingReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	remoteClusterID := liqov1beta1.ClusterID(conf.Labels[string(consts.RemoteClusterID)])
 	interfaces, err := route.GetGatewayInterfaces(ctx, r.Client, remoteClusterID)
 	if err != nil {
-		klog.Errorf("unable to get gateway interfaces for configuration %q: %v", req.String(), err)
-	} else {
-		tunnelNames := make([]string, len(interfaces))
-		for i := range interfaces {
-			tunnelNames[i] = tunnel.GetTunnelName(i)
-		}
-		klog.Infof("configuration %q has %d tunnel interface(s): %v", req.String(), len(tunnelNames), tunnelNames)
+		return ctrl.Result{}, fmt.Errorf("unable to get gateway interfaces for configuration %q: %w", req.String(), err)
+	}
+
+	tunnelNames := make([]string, len(interfaces))
+	for i := range interfaces {
+		tunnelNames[i] = tunnel.GetTunnelName(i)
 	}
 	if err := CreateOrUpdateNatMappingCIDR(ctx, r.Client, r.Options, conf,
-		r.Scheme, PodCIDR); err != nil {
+		r.Scheme, PodCIDR, tunnelNames); err != nil {
 		return ctrl.Result{}, err
 	}
-	if err := CreateOrUpdateNatMappingCIDR(ctx, r.Client, r.Options, conf, r.Scheme, ExternalCIDR); err != nil {
+	if err := CreateOrUpdateNatMappingCIDR(ctx, r.Client, r.Options, conf, r.Scheme, ExternalCIDR, tunnelNames); err != nil {
 		return ctrl.Result{}, err
 	}
 

@@ -28,7 +28,6 @@ import (
 	networkingv1beta1 "github.com/liqotech/liqo/apis/networking/v1beta1"
 	"github.com/liqotech/liqo/apis/networking/v1beta1/firewall"
 	"github.com/liqotech/liqo/pkg/consts"
-	"github.com/liqotech/liqo/pkg/gateway/tunnel"
 	"github.com/liqotech/liqo/pkg/utils/resource"
 )
 
@@ -44,7 +43,7 @@ const (
 
 // CreateOrUpdateNatMappingCIDR creates or updates the NAT mapping for a CIDR type.
 func CreateOrUpdateNatMappingCIDR(ctx context.Context, cl client.Client, opts *Options,
-	cfg *networkingv1beta1.Configuration, scheme *runtime.Scheme, cidrtype CIDRType) error {
+	cfg *networkingv1beta1.Configuration, scheme *runtime.Scheme, cidrtype CIDRType, tunnelNames []string) error {
 	var tableCIDRName string
 	switch cidrtype {
 	case PodCIDR:
@@ -63,7 +62,7 @@ func CreateOrUpdateNatMappingCIDR(ctx context.Context, cl client.Client, opts *O
 
 	op, err := resource.CreateOrUpdate(
 		ctx, cl, fwcfg,
-		mutateCIDRFirewallConfiguration(fwcfg, cfg, opts, scheme, cidrtype),
+		mutateCIDRFirewallConfiguration(fwcfg, cfg, opts, scheme, cidrtype, tunnelNames),
 	)
 
 	if err != nil {
@@ -78,20 +77,20 @@ func CreateOrUpdateNatMappingCIDR(ctx context.Context, cl client.Client, opts *O
 }
 
 func mutateCIDRFirewallConfiguration(fwcfg *networkingv1beta1.FirewallConfiguration, cfg *networkingv1beta1.Configuration,
-	opts *Options, scheme *runtime.Scheme, cidrtype CIDRType) func() error {
+	opts *Options, scheme *runtime.Scheme, cidrtype CIDRType, tunnelNames []string) func() error {
 	return func() error {
 		if cfg.Labels == nil {
 			return fmt.Errorf("configuration %q has no labels", cfg.Name)
 		}
 		remoteClusterID := cfg.Labels[string(consts.RemoteClusterID)]
 		fwcfg.SetLabels(ForgeFirewallTargetLabels(remoteClusterID))
-		fwcfg.Spec = forgeCIDRFirewallConfigurationSpec(cfg, opts, cidrtype)
+		fwcfg.Spec = forgeCIDRFirewallConfigurationSpec(cfg, opts, cidrtype, tunnelNames)
 		return controllerutil.SetOwnerReference(cfg, fwcfg, scheme)
 	}
 }
 
 func forgeCIDRFirewallConfigurationSpec(cfg *networkingv1beta1.Configuration, opts *Options,
-	cidrtype CIDRType) networkingv1beta1.FirewallConfigurationSpec {
+	cidrtype CIDRType, tunnelNames []string) networkingv1beta1.FirewallConfigurationSpec {
 	var tableCIDRName string
 	switch cidrtype {
 	case PodCIDR:
@@ -105,14 +104,14 @@ func forgeCIDRFirewallConfigurationSpec(cfg *networkingv1beta1.Configuration, op
 			Name:   &tableCIDRName,
 			Family: ptr.To(firewall.TableFamilyIPv4),
 			Chains: []firewall.Chain{
-				forgeCIDRFirewallConfigurationDNATChain(cfg, opts, cidrtype),
-				forgeCIDRFirewallConfigurationSNATChain(cfg, opts, cidrtype),
+				forgeCIDRFirewallConfigurationDNATChain(cfg, opts, cidrtype, tunnelNames),
+				forgeCIDRFirewallConfigurationSNATChain(cfg, opts, cidrtype, tunnelNames),
 			},
 		},
 	}
 }
 
-func forgeCIDRFirewallConfigurationDNATChain(cfg *networkingv1beta1.Configuration, opts *Options, cidrtype CIDRType) firewall.Chain {
+func forgeCIDRFirewallConfigurationDNATChain(cfg *networkingv1beta1.Configuration, opts *Options, cidrtype CIDRType, tunnelNames []string) firewall.Chain {
 	return firewall.Chain{
 		Name:     &DNATChainName,
 		Policy:   ptr.To(firewall.ChainPolicyAccept),
@@ -120,13 +119,13 @@ func forgeCIDRFirewallConfigurationDNATChain(cfg *networkingv1beta1.Configuratio
 		Hook:     &firewall.ChainHookPrerouting,
 		Priority: &firewall.ChainPriorityNATDest,
 		Rules: firewall.RulesSet{
-			NatRules: forgeCIDRFirewallConfigurationDNATRules(cfg, opts, cidrtype),
+			NatRules: forgeCIDRFirewallConfigurationDNATRules(cfg, opts, cidrtype, tunnelNames),
 		},
 	}
 }
 
 func forgeCIDRFirewallConfigurationSNATChain(cfg *networkingv1beta1.Configuration,
-	opts *Options, cidrtype CIDRType) firewall.Chain {
+	opts *Options, cidrtype CIDRType, tunnelNames []string) firewall.Chain {
 	return firewall.Chain{
 		Name:     &SNATChainName,
 		Policy:   ptr.To(firewall.ChainPolicyAccept),
@@ -134,7 +133,7 @@ func forgeCIDRFirewallConfigurationSNATChain(cfg *networkingv1beta1.Configuratio
 		Hook:     &firewall.ChainHookPostrouting,
 		Priority: &firewall.ChainPriorityNATSource,
 		Rules: firewall.RulesSet{
-			NatRules: forgeCIDRFirewallConfigurationSNATRules(cfg, opts, cidrtype),
+			NatRules: forgeCIDRFirewallConfigurationSNATRules(cfg, opts, cidrtype, tunnelNames),
 		},
 	}
 }
@@ -150,7 +149,7 @@ func cidrPairsForType(cfg *networkingv1beta1.Configuration, cidrtype CIDRType) (
 	return nil, nil
 }
 
-func forgeCIDRFirewallConfigurationDNATRules(cfg *networkingv1beta1.Configuration, opts *Options, cidrtype CIDRType) []firewall.NatRule {
+func forgeCIDRFirewallConfigurationDNATRules(cfg *networkingv1beta1.Configuration, opts *Options, cidrtype CIDRType, tunnelNames []string) []firewall.NatRule {
 	spec, status := cidrPairsForType(cfg, cidrtype)
 	rules := make([]firewall.NatRule, 0, len(spec))
 	for i := range spec {
@@ -174,13 +173,7 @@ func forgeCIDRFirewallConfigurationDNATRules(cfg *networkingv1beta1.Configuratio
 						Position: firewall.MatchDevPositionIn,
 					},
 				},
-				{
-					Op: firewall.MatchOperationNeq,
-					Dev: &firewall.MatchDev{
-						Value:    tunnel.TunnelInterfaceName,
-						Position: firewall.MatchDevPositionIn,
-					},
-				},
+				forgeTunnelDevMatch(tunnelNames, firewall.MatchDevPositionIn, true),
 			},
 			To: ptr.To(spec[i].String()),
 		})
@@ -189,7 +182,7 @@ func forgeCIDRFirewallConfigurationDNATRules(cfg *networkingv1beta1.Configuratio
 }
 
 func forgeCIDRFirewallConfigurationSNATRules(cfg *networkingv1beta1.Configuration,
-	opts *Options, cidrtype CIDRType) []firewall.NatRule {
+	opts *Options, cidrtype CIDRType, tunnelNames []string) []firewall.NatRule {
 	spec, status := cidrPairsForType(cfg, cidrtype)
 	rules := make([]firewall.NatRule, 0, len(spec))
 	for i := range spec {
@@ -214,15 +207,34 @@ func forgeCIDRFirewallConfigurationSNATRules(cfg *networkingv1beta1.Configuratio
 						Position: firewall.MatchPositionSrc,
 					},
 				},
-				{
-					Op: firewall.MatchOperationEq,
-					Dev: &firewall.MatchDev{
-						Value:    tunnel.TunnelInterfaceName,
-						Position: firewall.MatchDevPositionIn,
-					},
-				},
+				forgeTunnelDevMatch(tunnelNames, firewall.MatchDevPositionIn, false),
 			},
 		})
 	}
 	return rules
+}
+
+// forgeTunnelDevMatch builds a Match on the tunnel device(s): it uses the single-value
+// Dev field (eq/neq) when there is exactly one tunnel, and falls back to the Set field
+// (in/nin) when there are multiple tunnels, since eq/neq cannot express "any of N values".
+func forgeTunnelDevMatch(tunnelNames []string, position firewall.MatchDevPosition, negate bool) firewall.Match {
+	if len(tunnelNames) == 1 {
+		op := firewall.MatchOperationEq
+		if negate {
+			op = firewall.MatchOperationNeq
+		}
+		return firewall.Match{
+			Op:  op,
+			Dev: &firewall.MatchDev{Value: tunnelNames[0], Position: position},
+		}
+	}
+
+	op := firewall.MatchOperationIn
+	if negate {
+		op = firewall.MatchOperationNin
+	}
+	return firewall.Match{
+		Op:  op,
+		Set: &firewall.MatchSet{Values: tunnelNames, Position: position},
+	}
 }
