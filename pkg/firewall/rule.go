@@ -15,7 +15,10 @@
 package firewall
 
 import (
+	"fmt"
+
 	"github.com/google/nftables"
+	"github.com/google/nftables/binaryutil"
 	"github.com/google/nftables/userdata"
 
 	firewallapi "github.com/liqotech/liqo/apis/networking/v1beta1/firewall"
@@ -25,6 +28,9 @@ import (
 func addRules(nftconn *nftables.Conn, chain *firewallapi.Chain, nftchain *nftables.Chain) (bool, error) {
 	notrackApplied := false
 	apirules := FromChainToRulesArray(chain)
+	if err := ensureSetsForChain(nftconn, nftchain.Table, apirules); err != nil {
+		return false, err
+	}
 	nftrules, err := nftconn.GetRules(nftchain.Table, nftchain)
 	if err != nil {
 		return false, err
@@ -40,6 +46,47 @@ func addRules(nftconn *nftables.Conn, chain *firewallapi.Chain, nftchain *nftabl
 		}
 	}
 	return notrackApplied, nil
+}
+func ensureSetsForChain(nftconn *nftables.Conn, table *nftables.Table, apirules []firewallutils.Rule) error {
+	for _, rule := range apirules {
+		for _, m := range getMatchesFromRule(rule) {
+			if m.Set != nil && len(m.Set.Values) > 0 {
+				if err := ensureSet(nftconn, table, m.Set); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func ensureSet(nftconn *nftables.Conn, table *nftables.Table, matchSet *firewallapi.MatchSet) error {
+	setName := fmt.Sprintf("tunnel-list-%d", len(matchSet.Values))
+
+	existingSets, err := nftconn.GetSets(table)
+	if err == nil {
+		for _, s := range existingSets {
+			if s.Name == setName {
+				return nil
+			}
+		}
+	}
+
+	namedSet := &nftables.Set{
+		Table:        table,
+		Name:         setName,
+		KeyType:      nftables.TypeIFName,
+		KeyByteOrder: binaryutil.NativeEndian,
+	}
+
+	var elements []nftables.SetElement
+	for _, val := range matchSet.Values {
+		elements = append(elements, nftables.SetElement{
+			Key: ifname(val),
+		})
+	}
+
+	return nftconn.AddSet(namedSet, elements)
 }
 
 func isNotrackRule(rule firewallutils.Rule) bool {
@@ -83,4 +130,18 @@ func isRuleOutdated(nftrule *nftables.Rule, rules []firewallutils.Rule) (outdate
 		return false, nftRuleName
 	}
 	return true, nftRuleName
+}
+
+// getMatchesFromRule extracts the slice of matches from a given firewall rule
+//
+//	returning nil if the rule has no matches (e.g., RouteRule)
+func getMatchesFromRule(rule firewallutils.Rule) []firewallapi.Match {
+	switch r := rule.(type) {
+	case *firewallutils.FilterRuleWrapper:
+		return r.FilterRule.Match
+	case *firewallutils.NatRuleWrapper:
+		return r.NatRule.Match
+	default:
+		return nil
+	}
 }
