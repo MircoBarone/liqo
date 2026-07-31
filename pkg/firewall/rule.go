@@ -133,8 +133,7 @@ func isRuleOutdated(nftrule *nftables.Rule, rules []firewallutils.Rule) (outdate
 }
 
 // getMatchesFromRule extracts the slice of matches from a given firewall rule
-//
-//	returning nil if the rule has no matches (e.g., RouteRule)
+// returning nil if the rule has no matches (e.g., RouteRule)
 func getMatchesFromRule(rule firewallutils.Rule) []firewallapi.Match {
 	switch r := rule.(type) {
 	case *firewallutils.FilterRuleWrapper:

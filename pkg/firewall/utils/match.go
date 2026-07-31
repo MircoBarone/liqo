@@ -29,6 +29,13 @@ import (
 )
 
 func applyMatch(m *firewallv1beta1.Match, rule *nftables.Rule) error {
+	if m.Set != nil {
+		if err := applyMatchSet(m, rule); err != nil {
+			return err
+		}
+		return nil
+	}
+
 	op, err := getMatchCmpOp(m)
 	if err != nil {
 		return err
@@ -244,6 +251,29 @@ func applyMatchDev(m *firewallv1beta1.Match, rule *nftables.Rule, op expr.CmpOp)
 	return nil
 }
 
+func applyMatchSet(m *firewallv1beta1.Match, rule *nftables.Rule) error {
+	metakey, err := getMatchSetMetaKey(m)
+	if err != nil {
+		return err
+	}
+	invert := m.Op == firewallv1beta1.MatchOperationNin
+	setName := fmt.Sprintf("tunnel-list-%d", len(m.Set.Values))
+
+	rule.Exprs = append(rule.Exprs,
+		&expr.Meta{
+			Register: 1,
+			Key:      metakey,
+		},
+		&expr.Lookup{
+			SourceRegister: 1,
+			SetName:        setName,
+			Invert:         invert,
+		},
+	)
+
+	return nil
+}
+
 func applyMatchPort(m *firewallv1beta1.Match, rule *nftables.Rule, op expr.CmpOp) error {
 	matchPortValueType, err := GetPortValueType(&m.Port.Value)
 	if err != nil {
@@ -344,6 +374,21 @@ func getMatchDevMetaKey(m *firewallv1beta1.Match) (expr.MetaKey, error) {
 		return expr.MetaKeyOIFNAME, nil
 	}
 	return 0, fmt.Errorf("invalid match IP position %s", m.Dev.Position)
+}
+
+func getMatchSetMetaKey(m *firewallv1beta1.Match) (expr.MetaKey, error) {
+	if m.Set == nil {
+		return 0, fmt.Errorf("match set is not defined")
+	}
+
+	switch m.Set.Position {
+	case firewallv1beta1.MatchDevPositionIn:
+		return expr.MetaKeyIIFNAME, nil
+	case firewallv1beta1.MatchDevPositionOut:
+		return expr.MetaKeyOIFNAME, nil
+	default:
+		return 0, fmt.Errorf("invalid match set position %s", m.Set.Position)
+	}
 }
 
 func ifname(n string) []byte {
