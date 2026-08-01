@@ -25,7 +25,8 @@ import (
 )
 
 func checkRulesInChain(chain *firewallapi.Chain) error {
-	rules := firewall.FromChainToRulesArray(chain)
+	tunnels := firewall.GetTunnelInterfaces()
+	rules := firewall.FromChainToRulesArray(chain, tunnels)
 	if err := checkVoidRuleName(rules); err != nil {
 		return forgeChainError(chain, err)
 	}
@@ -61,8 +62,9 @@ func checkUniqueRuleNames(rules []firewallutils.Rule) error {
 }
 
 func generateRuleNames(chains []firewallapi.Chain) {
+	tunnels := firewall.GetTunnelInterfaces()
 	for i := range chains {
-		rules := firewall.FromChainToRulesArray(&chains[i])
+		rules := firewall.FromChainToRulesArray(&chains[i], tunnels)
 		for j := range rules {
 			if rules[j].GetName() == nil || *rules[j].GetName() == "" {
 				rules[j].SetName(uuid.NewString())

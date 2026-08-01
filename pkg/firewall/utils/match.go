@@ -29,11 +29,14 @@ import (
 )
 
 func applyMatch(m *firewallv1beta1.Match, rule *nftables.Rule) error {
-	if m.Set != nil {
-		if err := applyMatchSet(m, rule); err != nil {
+	if m.Proto != nil {
+		if err := applyMatchProto(m, rule); err != nil {
 			return err
 		}
-		return nil
+	}
+
+	if m.Set != nil {
+		return applyMatchSet(m, rule)
 	}
 
 	op, err := getMatchCmpOp(m)
@@ -41,27 +44,18 @@ func applyMatch(m *firewallv1beta1.Match, rule *nftables.Rule) error {
 		return err
 	}
 
-	if m.Proto != nil {
-		err = applyMatchProto(m, rule)
-		if err != nil {
-			return err
-		}
-	}
 	if m.Dev != nil {
-		err = applyMatchDev(m, rule, op)
-		if err != nil {
+		if err := applyMatchDev(m, rule, op); err != nil {
 			return err
 		}
 	}
 	if m.IP != nil {
-		err = applyMatchIP(m, rule, op)
-		if err != nil {
+		if err := applyMatchIP(m, rule, op); err != nil {
 			return err
 		}
 	}
 	if m.Port != nil {
-		err = applyMatchPort(m, rule, op)
-		if err != nil {
+		if err := applyMatchPort(m, rule, op); err != nil {
 			return err
 		}
 	}
