@@ -18,6 +18,8 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"slices"
+	"strings"
 	"syscall"
 
 	"github.com/vishvananda/netlink"
@@ -140,20 +142,34 @@ func IsEqualRoute(route1, route2 *netlink.Route) bool {
 		if multipathLen1 != multipathLen2 {
 			return false
 		}
-		for _, nh1 := range route1.MultiPath {
-			found := false
-			for _, nh2 := range route2.MultiPath {
-				if nh1.Equal(*nh2) {
-					found = true
-					break
-				}
-			}
-			if !found {
+		sorted1 := sortNextHops(route1.MultiPath)
+		sorted2 := sortNextHops(route2.MultiPath)
+
+		for i := range sorted1 {
+			if !sorted1[i].Equal(*sorted2[i]) {
 				return false
 			}
 		}
 	}
 	return true
+}
+
+// sortNextHops returns a sorted copy of the given multipath next-hops,
+// ordered by Gw, then LinkIndex, then Hops, so that two semantically
+// equal multipath sets can be compared positionally regardless of the
+// original ordering (and are robust to duplicate entries).
+func sortNextHops(nextHops []*netlink.NexthopInfo) []*netlink.NexthopInfo {
+	sorted := slices.Clone(nextHops)
+	slices.SortFunc(sorted, func(a, b *netlink.NexthopInfo) int {
+		if c := strings.Compare(a.Gw.String(), b.Gw.String()); c != 0 {
+			return c
+		}
+		if a.LinkIndex != b.LinkIndex {
+			return a.LinkIndex - b.LinkIndex
+		}
+		return a.Hops - b.Hops
+	})
+	return sorted
 }
 
 // CleanRoutes cleans the routes that are not contained in the given route list.

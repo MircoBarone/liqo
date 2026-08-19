@@ -60,7 +60,7 @@ type NextHop struct {
 	// +kubebuilder:validation:Required
 	Dev string `json:"dev"`
 	// Weight is the weight of this next-hop for load balancing.
-	// Lower weight means more traffic.
+	// Higher weight means more traffic.
 	// Default is 0, which is translated to a kernel weight of 1.
 	// +kubebuilder:validation:Minimum=0
 	// +kubebuilder:validation:Maximum=255
