@@ -216,6 +216,8 @@ func run(cmd *cobra.Command, _ []string) error {
 		mgr.GetClient(),
 		mgr.GetScheme(),
 		mgr.GetEventRecorder("route-binding-controller"),
+		"",
+		nil,
 	)
 
 	if err := rcr.SetupWithManager(cmd.Context(), mgr, routeTargetRef,

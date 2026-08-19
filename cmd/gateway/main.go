@@ -116,6 +116,11 @@ func run(cmd *cobra.Command, _ []string) error {
 		}
 	}
 
+	// Check if the number of interfaces is valid (must be at least 1).
+	if connoptions.GwOptions.NumInterfaces < 1 {
+		return fmt.Errorf("invalid number of interfaces (%d): must be at least 1", connoptions.GwOptions.NumInterfaces)
+	}
+
 	// Enable ip_forwarding.
 	if err = kernel.EnableIPForwarding(); err != nil {
 		return err
@@ -215,11 +220,19 @@ func run(cmd *cobra.Command, _ []string) error {
 		Name:       connoptions.GwOptions.PodName,
 		Namespace:  connoptions.GwOptions.Namespace,
 	}
+	tunnelName := tunnel.TunnelInterfaceName
+
+	interfaceNames := make([]string, connoptions.GwOptions.NumInterfaces)
+	for i := range connoptions.GwOptions.NumInterfaces {
+		interfaceNames[i] = tunnel.GetTunnelName(i)
+	}
 
 	rcr := route.NewRouteConfigurationBindingReconciler(
 		mgr.GetClient(),
 		mgr.GetScheme(),
 		mgr.GetEventRecorder("route-binding-controller"),
+		tunnelName,
+		interfaceNames,
 	)
 
 	if err := rcr.SetupWithManager(cmd.Context(), mgr, routeTargetRef,

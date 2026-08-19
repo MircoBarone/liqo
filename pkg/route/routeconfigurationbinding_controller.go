@@ -29,6 +29,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/events"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -48,15 +49,23 @@ type RouteConfigurationBindingReconciler struct {
 	client.Client
 	Scheme         *runtime.Scheme
 	EventsRecorder events.EventRecorder
+	// TunnelName is the base name used to build the placeholder ("<TunnelName>*")
+	// that marks rules to be expanded per tunnel interface.
+	TunnelName string
+	// TunnelInterfaceNames are the concrete tunnel interface names used to expand
+	// placeholder rules.
+	TunnelInterfaceNames []string
 }
 
 // NewRouteConfigurationBindingReconciler returns a new RouteConfigurationBindingReconciler.
 func NewRouteConfigurationBindingReconciler(cl client.Client, s *runtime.Scheme,
-	er events.EventRecorder) *RouteConfigurationBindingReconciler {
+	er events.EventRecorder, tunnelName string, tunnelInterfaceNames []string) *RouteConfigurationBindingReconciler {
 	return &RouteConfigurationBindingReconciler{
-		Client:         cl,
-		Scheme:         s,
-		EventsRecorder: er,
+		Client:               cl,
+		Scheme:               s,
+		EventsRecorder:       er,
+		TunnelName:           tunnelName,
+		TunnelInterfaceNames: tunnelInterfaceNames,
 	}
 }
 
@@ -143,13 +152,15 @@ func (r *RouteConfigurationBindingReconciler) Reconcile(ctx context.Context, req
 		return ctrl.Result{}, fmt.Errorf("getting the table ID: %w", err)
 	}
 
+	expandedRules := expandRules(routecfg.Spec.Table.Rules, r.TunnelName, r.TunnelInterfaceNames)
+
 	klog.V(4).Infof("Applying routeconfigurationbinding %s (routecfg %s)", req.String(), routecfg.Name)
 
 	existingRules, err := GetRulesByTableID(tableID)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("listing existing rules: %w", err)
 	}
-	if err = CleanRules(routecfg.Spec.Table.Rules, existingRules); err != nil {
+	if err = CleanRules(expandedRules, existingRules); err != nil {
 		return ctrl.Result{}, fmt.Errorf("cleaning rules: %w", err)
 	}
 
@@ -159,8 +170,8 @@ func (r *RouteConfigurationBindingReconciler) Reconcile(ctx context.Context, req
 	}
 
 	allRoutes := []networkingv1beta1.Route{}
-	for i := range routecfg.Spec.Table.Rules {
-		allRoutes = append(allRoutes, routecfg.Spec.Table.Rules[i].Routes...)
+	for i := range expandedRules {
+		allRoutes = append(allRoutes, expandedRules[i].Routes...)
 	}
 	if err = CleanRoutes(allRoutes, existingRoutes); err != nil {
 		return ctrl.Result{}, fmt.Errorf("cleaning routes: %w", err)
@@ -175,11 +186,11 @@ func (r *RouteConfigurationBindingReconciler) Reconcile(ctx context.Context, req
 	// NOT in the desired spec, while Ensure*Presence only looks up entries that ARE in the desired
 	// spec, so the two never operate on the same rows and the stale snapshot cannot cause a wrong
 	// exists/not-exists result. Re-fetching here would just be a redundant netlink list.
-	for i := range routecfg.Spec.Table.Rules {
-		if err = EnsureRulePresence(&routecfg.Spec.Table.Rules[i], tableID, existingRules); err != nil {
+	for _, rule := range expandedRules {
+		if err = EnsureRulePresence(&rule, tableID, existingRules); err != nil {
 			return ctrl.Result{}, fmt.Errorf("ensuring rule presence: %w", err)
 		}
-		if err := EnsureRoutesPresence(routecfg.Spec.Table.Rules[i].Routes, tableID, existingRoutes); err != nil {
+		if err := EnsureRoutesPresence(rule.Routes, tableID, existingRoutes); err != nil {
 			if errors.Is(err, ErrNetworkUnreachable) {
 				klog.Warningf("Network is unreachable for routeconfigurationbinding %s, requeuing: %v", req.String(), err)
 				return ctrl.Result{RequeueAfter: 1 * time.Second}, nil
@@ -330,4 +341,29 @@ func cleanupBinding(ctx context.Context, cl client.Client, binding *networkingv1
 	}
 	klog.Infof("Shutdown cleanup: removed finalizer from RouteConfigurationBinding %s/%s",
 		binding.Namespace, binding.Name)
+}
+
+// expandRules expands the existing rules by creating a specialized rule for each active
+// network interface that matches the provided tunnel name prefix (acting as a placeholder).
+func expandRules(rules []networkingv1beta1.Rule, tunnelName string, tunnelInterfaceNames []string) []networkingv1beta1.Rule {
+	if tunnelName == "" && len(tunnelInterfaceNames) == 0 {
+		return rules
+	}
+	expandedRules := []networkingv1beta1.Rule{}
+	placeholder := tunnelName + "*"
+
+	for i := range rules {
+		rule := rules[i]
+
+		if rule.Iif != nil && *rule.Iif == placeholder {
+			for _, iface := range tunnelInterfaceNames {
+				newRule := rule
+				newRule.Iif = ptr.To(iface)
+				expandedRules = append(expandedRules, newRule)
+			}
+		} else {
+			expandedRules = append(expandedRules, rule)
+		}
+	}
+	return expandedRules
 }
