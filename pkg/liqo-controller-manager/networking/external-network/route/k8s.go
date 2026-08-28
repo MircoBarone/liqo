@@ -47,10 +47,10 @@ const (
 	// (pkg/liqo-controller-manager/networking/internal-network/route/mark.go), which assigns
 	// sequential marks starting from 1, one per node. A high value ensures no overlap even in
 	// very large clusters.
-	gwExtMark = 0xFF00
+	GwExtMark = 0xFF00
 
 	// gwExtGenevePrefix is the prefix shared by all Geneve interfaces created by Liqo.
-	gwExtGenevePrefix = "liqo."
+	GwExtGenevePrefix = "liqo."
 
 	// GwNodeMark is the fwmark value used to tag traffic arriving on WireGuard tunnel interfaces (liqo-tunnel*).
 	GwNodeMark = 0xFE00
@@ -113,7 +113,7 @@ func enforceRouteConfigurationPresence(ctx context.Context, cl client.Client, sc
 		},
 	}
 	if _, err = resource.CreateOrUpdate(ctx, cl, fwcfgExt,
-		forgeMutateFirewallConfiguration(cfg, fwcfgExt, scheme, remoteClusterID, "gw-ext-mark", gwExtGenevePrefix, gwExtMark)); err != nil {
+		forgeMutateFirewallConfiguration(cfg, fwcfgExt, scheme, remoteClusterID, "gw-ext-mark", GwExtGenevePrefix, GwExtMark)); err != nil {
 		return fmt.Errorf("ensuring firewall configuration %q: %w", fwcfgExt.Name, err)
 	}
 	// Ensure the FirewallConfiguration that marks traffic arriving on Wireguard tunnels.
@@ -219,7 +219,7 @@ func forgeMutateRouteConfiguration(cfg *networkingv1beta1.Configuration,
 		}
 
 		remoteCIDRs := slices.Concat(cfg.Spec.Remote.CIDR.Pod, cfg.Spec.Remote.CIDR.External)
-		mark := gwExtMark
+		mark := GwExtMark
 		for j := range remoteCIDRs {
 			dst := &remoteCIDRs[j]
 			routecfg.Spec.Table.Rules = append(routecfg.Spec.Table.Rules, networkingv1beta1.Rule{
