@@ -125,6 +125,46 @@ spec:
                     description: Value of the latency.
                     type: string
                 type: object
+              multitunnelMetrics:
+                description: |-
+                  MultitunnelMetrics contains additional metrics available only when
+                  multiple WireGuard tunnels are configured for this connection.
+                properties:
+                  downInterfaces:
+                    description: |-
+                      DownInterfaces contains the list of interface IDs that are currently
+                      reporting a disconnected status.
+                    items:
+                      type: string
+                    maxItems: 64
+                    type: array
+                  maxLatency:
+                    description: |-
+                      MaxLatency represents the maximum latency among all interfaces,
+                      when multiple interfaces are configured.
+                    properties:
+                      timestamp:
+                        description: Timestamp of the latency.
+                        format: date-time
+                        type: string
+                      value:
+                        description: Value of the latency.
+                        type: string
+                    type: object
+                  minLatency:
+                    description: |-
+                      MinLatency represents the minimum latency among all interfaces,
+                      when multiple interfaces are configured.
+                    properties:
+                      timestamp:
+                        description: Timestamp of the latency.
+                        format: date-time
+                        type: string
+                      value:
+                        description: Value of the latency.
+                        type: string
+                    type: object
+                type: object
               value:
                 description: Value of the connection.
                 type: string

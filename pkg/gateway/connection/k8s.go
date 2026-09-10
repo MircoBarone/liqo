@@ -24,12 +24,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	networkingv1beta1 "github.com/liqotech/liqo/apis/networking/v1beta1"
+	conncheck "github.com/liqotech/liqo/pkg/conncheck"
 	timeutils "github.com/liqotech/liqo/pkg/utils/time"
 )
 
 // UpdateConnectionStatus updates the status of a connection.
 func UpdateConnectionStatus(ctx context.Context, cl client.Client, opts *Options, connection *networkingv1beta1.Connection,
-	value networkingv1beta1.ConnectionStatusValue, latency time.Duration, timestamp time.Time) error {
+	value networkingv1beta1.ConnectionStatusValue, latency time.Duration, timestamp time.Time,
+	multitunnelMetrics *conncheck.MultitunnelStatus) error {
 	if connection.Status.Value != value {
 		klog.Infof("changing connection %q status to %q",
 			client.ObjectKeyFromObject(connection).String(), value)
@@ -39,6 +41,21 @@ func UpdateConnectionStatus(ctx context.Context, cl client.Client, opts *Options
 		Timestamp: metav1.NewTime(timestamp),
 	}
 	connection.Status.Value = value
+	if multitunnelMetrics != nil {
+		connection.Status.MultitunnelMetrics = &networkingv1beta1.ConnectionMultitunnelMetrics{
+			MaxLatency: networkingv1beta1.ConnectionLatency{
+				Value:     timeutils.FormatLatency(multitunnelMetrics.MaxLatency),
+				Timestamp: metav1.NewTime(timestamp),
+			},
+			MinLatency: networkingv1beta1.ConnectionLatency{
+				Value:     timeutils.FormatLatency(multitunnelMetrics.MinLatency),
+				Timestamp: metav1.NewTime(timestamp),
+			},
+			DownInterfaces: multitunnelMetrics.DownInterfaces,
+		}
+	} else {
+		connection.Status.MultitunnelMetrics = nil
+	}
 	if err := cl.Status().Update(ctx, connection); err != nil {
 		return fmt.Errorf("unable to update connection %q: %w",
 			client.ObjectKeyFromObject(connection).String(), err)
