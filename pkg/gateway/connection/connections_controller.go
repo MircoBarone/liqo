@@ -116,10 +116,11 @@ func (r *ConnectionsReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			r.ConnChecker.SetPeerMonitorObserver(observer)
 		}
 		var (
-			status          conncheck.PeerStatus
-			err             error
-			latency         time.Duration
-			connStatusValue = networkingv1beta1.ConnectionError
+			status             conncheck.PeerStatus
+			err                error
+			latency            time.Duration
+			connStatusValue    = networkingv1beta1.ConnectionError
+			multitunnelMetrics *conncheck.MultitunnelStatus
 		)
 		if r.Options.GwOptions.NumInterfaces > 1 {
 			status, err = r.ConnChecker.GetStatusMultitunnel()
@@ -131,10 +132,13 @@ func (r *ConnectionsReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			if status.Connected {
 				connStatusValue = networkingv1beta1.Connected
 			}
+			if status.Multitunnel != nil {
+				multitunnelMetrics = status.Multitunnel
+			}
 			klog.V(6).Infof("connection %q status: connected=%v latency=%s", req.NamespacedName, status.Connected, latency)
 		}
 
-		if err := UpdateConnectionStatus(ctx, r.Client, r.Options, connection, connStatusValue, latency, time.Now()); err != nil {
+		if err := UpdateConnectionStatus(ctx, r.Client, r.Options, connection, connStatusValue, latency, time.Now(), multitunnelMetrics); err != nil {
 			return ctrl.Result{}, fmt.Errorf("unable to update the connection status: %w", err)
 		}
 
@@ -144,7 +148,7 @@ func (r *ConnectionsReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	case false:
 		// Ping disabled — mark the connection as connected with zero latency.
 		if err := UpdateConnectionStatus(ctx, r.Client, r.Options, connection,
-			networkingv1beta1.Connected, 0, time.Time{}); err != nil {
+			networkingv1beta1.Connected, 0, time.Time{}, nil); err != nil {
 			return ctrl.Result{}, fmt.Errorf("unable to update the connection status: %w", err)
 		}
 	}

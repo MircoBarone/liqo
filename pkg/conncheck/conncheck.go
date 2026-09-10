@@ -166,8 +166,16 @@ func (c *ConnChecker) DelAndStopSender(interfaceID string) {
 
 // PeerStatus holds the current in-memory state of a peer.
 type PeerStatus struct {
-	Connected bool
-	Latency   time.Duration
+	Connected   bool
+	Latency     time.Duration
+	Multitunnel *MultitunnelStatus
+}
+
+// MultitunnelStatus holds aggregated metrics for a multi-interface connection.
+type MultitunnelStatus struct {
+	MaxLatency     time.Duration
+	MinLatency     time.Duration
+	DownInterfaces []string
 }
 
 // GetStatus returns the connection status and latency for a specific peer.
@@ -190,10 +198,15 @@ func (c *ConnChecker) GetStatus(targetID string) (PeerStatus, error) {
 // GetStatusMultitunnel returns the aggregated connection status and average latency across all interfaces,
 // as calculated by the PeerMonitor.
 func (c *ConnChecker) GetStatusMultitunnel() (PeerStatus, error) {
-	connected, latency := c.receiver.GetPeerMonitorStatus()
+	connected, latency, maxLatency, minLatency, downInterfaces := c.receiver.GetPeerMonitorStatus()
 	return PeerStatus{
 		Connected: connected,
 		Latency:   latency,
+		Multitunnel: &MultitunnelStatus{
+			MaxLatency:     maxLatency,
+			MinLatency:     minLatency,
+			DownInterfaces: downInterfaces,
+		},
 	}, nil
 }
 

@@ -41,10 +41,13 @@ type Peer struct {
 
 // PeerMonitor manages and aggregates the connectivity status across multiple interfaces.
 type PeerMonitor struct {
-	mu        sync.RWMutex
-	connected bool
-	latency   time.Duration
-	observer  PingObserver
+	mu             sync.RWMutex
+	connected      bool
+	latency        time.Duration
+	observer       PingObserver
+	maxLatency     time.Duration
+	minLatency     time.Duration
+	downInterfaces []string
 }
 
 // Receiver is a receiver for conncheck messages.
@@ -73,19 +76,28 @@ func (r *Receiver) PeerMonitorObserver() PingObserver {
 }
 
 // UpdatePeerMonitor updates the aggregated status in PeerMonitor in a thread-safe way.
-func (r *Receiver) UpdatePeerMonitor(connected bool, latency time.Duration) {
+func (r *Receiver) UpdatePeerMonitor(connected bool, latency time.Duration, maxLatency time.Duration, minLatency time.Duration, downInterfaces []string) {
 	r.peerMonitor.mu.Lock()
 	defer r.peerMonitor.mu.Unlock()
 
 	r.peerMonitor.connected = connected
 	r.peerMonitor.latency = latency
+	r.peerMonitor.maxLatency = maxLatency
+	r.peerMonitor.minLatency = minLatency
+	r.peerMonitor.downInterfaces = append([]string(nil), downInterfaces...)
 }
 
-// GetPeerMonitorStatus returns the aggregated connected status and latency.
-func (r *Receiver) GetPeerMonitorStatus() (bool, time.Duration) {
+// GetPeerMonitorStatus returns the aggregated connection status, average latency,
+// maximum latency, minimum latency, and the list of interfaces currently down.
+func (r *Receiver) GetPeerMonitorStatus() (bool, time.Duration, time.Duration, time.Duration, []string) {
 	r.peerMonitor.mu.RLock()
 	defer r.peerMonitor.mu.RUnlock()
-	return r.peerMonitor.connected, r.peerMonitor.latency
+
+	return r.peerMonitor.connected,
+		r.peerMonitor.latency,
+		r.peerMonitor.maxLatency,
+		r.peerMonitor.minLatency,
+		append([]string(nil), r.peerMonitor.downInterfaces...)
 }
 
 // NewReceiver creates a new conncheck receiver.
@@ -256,28 +268,42 @@ func (r *Receiver) RunPeerMonitor(ctx context.Context) {
 			}
 
 			var (
-				allConnected = true
-				totalLatency time.Duration
-				peerCount    = int64(len(r.peers))
+				allConnected   = true
+				totalLatency   time.Duration
+				minLatency     time.Duration
+				maxLatency     time.Duration
+				peerCount      = int64(len(r.peers))
+				downInterfaces []string
 			)
-			for _, p := range r.peers {
+			for interfaceID, p := range r.peers {
 				if !p.connected {
 					allConnected = false
-					break
+					downInterfaces = append(downInterfaces, interfaceID)
 				}
-				totalLatency += p.latency
+				if allConnected {
+					totalLatency += p.latency
+					if maxLatency < p.latency {
+						maxLatency = p.latency
+					}
+					if minLatency == 0 || p.latency < minLatency {
+						minLatency = p.latency
+					}
+				}
 			}
 			r.m.RUnlock()
 
 			var avgLatency time.Duration
 			if allConnected && peerCount > 0 {
 				avgLatency = totalLatency / time.Duration(peerCount)
+				downInterfaces = nil
 			} else {
 				allConnected = false
 				avgLatency = 0
+				maxLatency = 0
+				minLatency = 0
 			}
 
-			r.UpdatePeerMonitor(allConnected, avgLatency)
+			r.UpdatePeerMonitor(allConnected, avgLatency, maxLatency, minLatency, downInterfaces)
 
 			if obs := r.PeerMonitorObserver(); obs != nil {
 				obs(allConnected, avgLatency)

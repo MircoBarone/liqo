@@ -72,12 +72,30 @@ type ConnectionLatency struct {
 	Timestamp metav1.Time `json:"timestamp,omitempty"`
 }
 
+// ConnectionMultitunnelMetrics represents a series of metrics useful when multitunnel is used.
+type ConnectionMultitunnelMetrics struct {
+	// MaxLatency represents the maximum latency among all interfaces,
+	// when multiple interfaces are configured.
+	MaxLatency ConnectionLatency `json:"maxLatency,omitempty"`
+	// MinLatency represents the minimum latency among all interfaces,
+	// when multiple interfaces are configured.
+	MinLatency ConnectionLatency `json:"minLatency,omitempty"`
+	// DownInterfaces contains the list of interface IDs that are currently
+	// reporting a disconnected status.
+	// +kubebuilder:validation:MaxItems=64
+	DownInterfaces []string `json:"downInterfaces,omitempty"`
+}
+
 // ConnectionStatus defines the observed state of Connection.
 type ConnectionStatus struct {
 	// Value of the connection.
 	Value ConnectionStatusValue `json:"value,omitempty"`
 	// Latency of the connection.
 	Latency ConnectionLatency `json:"latency,omitempty"`
+	// MultitunnelMetrics contains additional metrics available only when
+	// multiple WireGuard tunnels are configured for this connection.
+	// +optional
+	MultitunnelMetrics *ConnectionMultitunnelMetrics `json:"multitunnelMetrics,omitempty"`
 }
 
 // +kubebuilder:object:root=true
