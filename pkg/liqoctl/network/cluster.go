@@ -303,7 +303,7 @@ func (c *Cluster) checkTemplateServerServiceClusterIP(_ *unstructured.Unstructur
 	return nil
 }
 func (c *Cluster) checkTemplateServerServiceNodePort(template *unstructured.Unstructured, opts *Options) error {
-	if opts.ServerServiceNodePort == 0 {
+	if opts.ServerServiceNodePort == 0 && len(opts.ServerServiceNodePorts) == 0 {
 		return nil
 	}
 
@@ -324,8 +324,9 @@ func (c *Cluster) checkTemplateServerServiceNodePort(template *unstructured.Unst
 		}
 		if _, hasNodePorts := m["nodePorts"]; !hasNodePorts {
 			return fmt.Errorf("unable to get %s.+ports.nodePorts in the server template, "+
-				"since you specified the flag \"--gw-server-service-nodeport\" "+
-				"you need to add the \"nodePorts\" field in the template", serverTemplateServiceSpecPath)
+				"since you specified a NodePort flag (\"--gw-server-service-nodeport\" or "+
+				"\"--multitunnel-server-nodeports\") you need to add the \"nodePorts\" field in the template",
+				serverTemplateServiceSpecPath)
 		}
 		return nil
 	}
@@ -401,19 +402,52 @@ func (c *Cluster) CheckNetworkInitialized(ctx context.Context, remoteClusterID l
 	return nil
 }
 
+// desiredPorts returns the ports requested in the endpoint: the Ports list
+// if set, otherwise the single Port.
+func desiredPorts(endpoint *networkingv1beta1.Endpoint) []int32 {
+	if len(endpoint.Ports) > 0 {
+		return endpoint.Ports
+	}
+	return []int32{endpoint.Port}
+}
+
+// desiredNodePorts returns the forced NodePorts: the NodePorts list if set,
+// otherwise the single NodePort (applied to the first port). Zero means "not forced".
+func desiredNodePorts(endpoint *networkingv1beta1.Endpoint) []int32 {
+	if len(endpoint.NodePorts) > 0 {
+		return endpoint.NodePorts
+	}
+	if endpoint.NodePort != nil && *endpoint.NodePort != 0 {
+		return []int32{*endpoint.NodePort}
+	}
+	return nil
+}
+
 func endpointHasChanged(endpoint *networkingv1beta1.Endpoint, service *corev1.Service) bool {
 	if endpoint.ServiceType != service.Spec.Type {
 		return true
 	}
+
 	if len(service.Spec.Ports) > 0 {
-		if endpoint.Port != service.Spec.Ports[0].Port {
+		wanted := desiredPorts(endpoint)
+		if len(wanted) != len(service.Spec.Ports) {
 			return true
+		}
+		for i, p := range wanted {
+			if p != service.Spec.Ports[i].Port {
+				return true
+			}
 		}
 
-		if endpoint.NodePort != nil && *endpoint.NodePort != service.Spec.Ports[0].NodePort {
-			return true
+		// Forced NodePorts apply in order to the first ports; the extra ones are ignored
+		// by the template, so we compare only up to the number of Service ports.
+		for i, np := range desiredNodePorts(endpoint) {
+			if i < len(service.Spec.Ports) && np != service.Spec.Ports[i].NodePort {
+				return true
+			}
 		}
 	}
+
 	if endpoint.LoadBalancerIP != nil && *endpoint.LoadBalancerIP != service.Spec.LoadBalancerIP ||
 		endpoint.LoadBalancerIP == nil && service.Spec.LoadBalancerIP != "" {
 		return true

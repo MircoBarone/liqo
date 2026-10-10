@@ -47,6 +47,7 @@ type GwClientOptions struct {
 	MTU               int
 	Addresses         []string
 	Port              int32
+	Ports             []int32
 	Protocol          string
 }
 
@@ -89,8 +90,14 @@ func MutateGatewayClient(gwClient *networkingv1beta1.GatewayClient, o *GwClientO
 	// Server Endpoint
 	gwClient.Spec.Endpoint = networkingv1beta1.EndpointStatus{
 		Addresses: o.Addresses,
-		Port:      o.Port,
 		Protocol:  ptr.To(corev1.Protocol(o.Protocol)),
+	}
+
+	// Ports takes precedence over Port. The server status exposes only one of the two.
+	if len(o.Ports) > 0 {
+		gwClient.Spec.Endpoint.Ports = o.Ports
+	} else {
+		gwClient.Spec.Endpoint.Port = o.Port
 	}
 
 	// Client Template Reference

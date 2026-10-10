@@ -16,6 +16,7 @@ package network
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -39,12 +40,16 @@ type Options struct {
 	Wait           bool
 	SkipValidation bool
 
-	ServerGatewayType           string
-	ServerTemplateName          string
-	ServerTemplateNamespace     string
-	ServerServiceType           *argsutils.StringEnum
-	ServerServicePort           int32
-	ServerServiceNodePort       int32
+	ServerGatewayType       string
+	ServerTemplateName      string
+	ServerTemplateNamespace string
+	ServerServiceType       *argsutils.StringEnum
+	ServerServicePort       int32
+	// ServerServicePorts, when set, takes precedence over ServerServicePort (multitunnel).
+	ServerServicePorts    []int32
+	ServerServiceNodePort int32
+	// ServerServiceNodePorts are matched in order with the server ports. If fewer, Kubernetes allocates the rest.
+	ServerServiceNodePorts      []int32
 	ServerServiceLoadBalancerIP string
 
 	ClientGatewayType       string
@@ -54,8 +59,11 @@ type Options struct {
 	// liqoctl ignores the values of server and port written in the GatewayServer status.
 	ClientConnectAddress string
 	// ClientConnectPort is the port used by the client to connect to the gateway server. When this value is specified
-	// liqoctl ignores the values of server and port written in the GatewayServer status.
+	// liqoctl ignores the port written in the GatewayServer status. It cannot be used with multiple server ports.
 	ClientConnectPort int32
+	// ClientConnectPorts are the ports used by the client to connect to the gateway server, matched in order with the
+	// server ports. When specified liqoctl ignores the ports written in the GatewayServer status.
+	ClientConnectPorts []int32
 
 	MTU                int
 	DisableSharingKeys bool
@@ -114,6 +122,11 @@ func (o *Options) RunConnect(ctx context.Context) error {
 
 	if o.ClientTemplateNamespace == "" {
 		o.ClientTemplateNamespace = o.LocalFactory.LiqoNamespace
+	}
+
+	// Multitunnel validation
+	if err := o.multitunnelValidate(); err != nil {
+		return err
 	}
 
 	// Create and initialize cluster 1.
@@ -194,7 +207,12 @@ func (o *Options) RunConnect(ctx context.Context) error {
 		endpoint.Addresses = []string{o.ClientConnectAddress}
 	}
 
-	if o.ClientConnectPort != 0 {
+	switch {
+	case len(o.ClientConnectPorts) > 0:
+		// Override the ports read from the server status: keep Port and Ports mutually exclusive.
+		endpoint.Port = 0
+		endpoint.Ports = o.ClientConnectPorts
+	case o.ClientConnectPort != 0:
 		endpoint.Port = o.ClientConnectPort
 	}
 
@@ -262,6 +280,38 @@ func (o *Options) RunConnect(ctx context.Context) error {
 		if err := cluster2.waiter.ForConnectionEstablished(ctx, conn2); err != nil {
 			return err
 		}
+	}
+
+	return nil
+}
+
+// multitunnelValidate checks the consistency of the server and client port options.
+// It runs before any resource is created.
+func (o *Options) multitunnelValidate() error {
+	// Effective number of server ports: the classic port counts as one.
+	n := 1
+	if len(o.ServerServicePorts) > 0 {
+		n = len(o.ServerServicePorts)
+	}
+
+	// NodePort and NodePorts are mutually exclusive (also in the CRD).
+	if o.ServerServiceNodePort != 0 && len(o.ServerServiceNodePorts) > 0 {
+		return fmt.Errorf("--gw-server-service-nodeport cannot be used together with --multitunnel-server-nodeports")
+	}
+
+	// ClientPort and ClientPorts are mutually exclusive.
+	if o.ClientConnectPort != 0 && len(o.ClientConnectPorts) > 0 {
+		return fmt.Errorf("--gw-client-port cannot be used together with --multitunnel-client-ports")
+	}
+
+	// A single client port cannot serve more than one tunnel.
+	if o.ClientConnectPort != 0 && n > 1 {
+		return fmt.Errorf("--gw-client-port cannot be used with multiple server ports, use --multitunnel-client-ports")
+	}
+
+	// Each tunnel needs its own client port.
+	if len(o.ClientConnectPorts) > 0 && len(o.ClientConnectPorts) != n {
+		return fmt.Errorf("--multitunnel-client-ports must have %d elements, the same number of server ports", n)
 	}
 
 	return nil
@@ -354,7 +404,9 @@ func (o *Options) newGatewayServerForgeOptions(kubeClient kubernetes.Interface, 
 		ServiceType:       corev1.ServiceType(o.ServerServiceType.Value),
 		MTU:               o.MTU,
 		Port:              o.ServerServicePort,
+		Ports:             o.ServerServicePorts,
 		NodePort:          ptr.To(o.ServerServiceNodePort),
+		NodePorts:         o.ServerServiceNodePorts,
 		LoadBalancerIP:    ptr.To(o.ServerServiceLoadBalancerIP),
 	}
 }
@@ -370,6 +422,7 @@ func (o *Options) newGatewayClientForgeOptions(kubeClient kubernetes.Interface, 
 		MTU:               o.MTU,
 		Addresses:         serverEndpoint.Addresses,
 		Port:              serverEndpoint.Port,
+		Ports:             serverEndpoint.Ports,
 		Protocol:          string(*serverEndpoint.Protocol),
 	}
 }

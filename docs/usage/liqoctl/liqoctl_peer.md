@@ -40,6 +40,9 @@ liqoctl peer [flags]
   $ liqoctl peer --remote-kubeconfig <provider> --cpu 2 --memory 4Gi --pods 10 --resource nvidia.com/gpu=2
   $ liqoctl peer --remote-kubeconfig <provider> --create-resource-slice false
   $ liqoctl peer --remote-kubeconfig <provider> --create-virtual-node false
+  $ liqoctl peer --remote-kubeconfig <provider> --multitunnel-server-ports 51841,51842,51843,51844
+  $ liqoctl peer --remote-kubeconfig <provider> --gw-server-service-type NodePort \
+      --multitunnel-server-ports 51841,51842 --multitunnel-server-nodeports 30001,30002
 ```
 
 
@@ -85,7 +88,7 @@ liqoctl peer [flags]
 
 `--gw-server-service-nodeport` _int32_:
 
->Force the NodePort of the Gateway Server service. Leave empty to let Kubernetes allocate a random NodePort
+>Force the NodePort of the Gateway Server service. With multiple server ports it applies to the first one. Leave empty to let Kubernetes allocate a random NodePort
 
 `--gw-server-service-port` _int32_:
 
@@ -114,6 +117,18 @@ liqoctl peer [flags]
 `--multi-virtual-node`
 
 >Create one VirtualNode and ResourceSlice per remote node, named after the remote node
+
+`--multitunnel-client-ports` _int32Slice_:
+
+>Ports used by the gateway client to connect to the gateway server, matched in order with the server ports. This value overrides the ones automatically retrieved by Liqo (e.g. the server is behind a NAT)
+
+`--multitunnel-server-nodeports` _int32Slice_:
+
+>NodePorts of the Gateway Server service, matched in order with --multitunnel-server-ports. If fewer than the server ports are given, the remaining NodePorts are allocated by Kubernetes
+
+`--multitunnel-server-ports` _int32Slice_:
+
+>Ports of the Gateway Server service, one per tunnel (multi-tunnel). When set, it takes precedence over --gw-server-service-port
 
 `-n`, `--namespace` _string_:
 

@@ -54,10 +54,13 @@ type Options struct {
 	ServerServiceLocation       *argsutils.StringEnum
 	ServerServiceType           *argsutils.StringEnum
 	ServerServicePort           int32
+	ServerServicePorts          []int32 // multitunnel: if set, takes precedence over ServerServicePort
 	ServerServiceNodePort       int32
+	ServerServiceNodePorts      []int32
 	ServerServiceLoadBalancerIP string
 	ClientConnectAddress        string
 	ClientConnectPort           int32
+	ClientConnectPorts          []int32
 	MTU                         int
 
 	// Authentication options
@@ -148,7 +151,9 @@ func ensureNetworking(ctx context.Context, o *Options) error {
 		ServerTemplateNamespace:     remoteFactory.LiqoNamespace,
 		ServerServiceType:           o.ServerServiceType,
 		ServerServicePort:           o.ServerServicePort,
+		ServerServicePorts:          o.ServerServicePorts,
 		ServerServiceNodePort:       o.ServerServiceNodePort,
+		ServerServiceNodePorts:      o.ServerServiceNodePorts,
 		ServerServiceLoadBalancerIP: o.ServerServiceLoadBalancerIP,
 
 		ClientGatewayType:       nwforge.DefaultGwClientType,
@@ -156,6 +161,7 @@ func ensureNetworking(ctx context.Context, o *Options) error {
 		ClientTemplateNamespace: localFactory.LiqoNamespace,
 		ClientConnectAddress:    o.ClientConnectAddress,
 		ClientConnectPort:       o.ClientConnectPort,
+		ClientConnectPorts:      o.ClientConnectPorts,
 
 		MTU:                o.MTU,
 		DisableSharingKeys: false,

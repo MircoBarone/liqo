@@ -134,8 +134,15 @@ func newNetworkConnectCommand(ctx context.Context, options *network.Options) *co
 			forge.DefaultGwServerServiceType))
 	cmd.Flags().Int32Var(&options.ServerServicePort, "gw-server-service-port", forge.DefaultGwServerPort,
 		fmt.Sprintf("Port of the Gateway Server service. Default: %d", forge.DefaultGwServerPort))
+	cmd.Flags().Int32SliceVar(&options.ServerServicePorts, "multitunnel-server-ports", nil,
+		"Ports of the Gateway Server service, one per tunnel (multi-tunnel). "+
+			"When set, it takes precedence over --gw-server-service-port")
 	cmd.Flags().Int32Var(&options.ServerServiceNodePort, "gw-server-service-nodeport", 0,
-		"Force the NodePort of the Gateway Server service. Leave empty to let Kubernetes allocate a random NodePort")
+		"Force the NodePort of the Gateway Server service. With multiple server ports it applies to the first one. "+
+			"Leave empty to let Kubernetes allocate a random NodePort")
+	cmd.Flags().Int32SliceVar(&options.ServerServiceNodePorts, "multitunnel-server-nodeports", nil,
+		"NodePorts of the Gateway Server service, matched in order with --multitunnel-server-ports. "+
+			"If fewer than the server ports are given, the remaining NodePorts are allocated by Kubernetes")
 	cmd.Flags().StringVar(&options.ServerServiceLoadBalancerIP, "gw-server-service-loadbalancerip", "",
 		"Force LoadBalancer IP of the Gateway Server service. Leave empty to use the one provided by the LoadBalancer provider")
 
@@ -150,6 +157,9 @@ func newNetworkConnectCommand(ctx context.Context, options *network.Options) *co
 		"Define the port used by the gateway client to connect to the gateway server. "+
 			"This value overrides the one automatically retrieved by Liqo and it is useful when the server is "+
 			"not directly reachable (e.g. the server is behind a NAT)")
+	cmd.Flags().Int32SliceVar(&options.ClientConnectPorts, "multitunnel-client-ports", nil,
+		"Ports used by the gateway client to connect to the gateway server, matched in order with the server ports. "+
+			"This value overrides the ones automatically retrieved by Liqo (e.g. the server is behind a NAT)")
 	cmd.Flags().StringVar(&options.ClientTemplateName, "gw-client-template-name", forge.DefaultGwClientTemplateName,
 		"Name of the Gateway Client template")
 	cmd.Flags().StringVar(&options.ClientTemplateNamespace, "gw-client-template-namespace", "",

@@ -55,6 +55,9 @@ Examples:
   $ {{ .Executable }} peer --remote-kubeconfig <provider> --cpu 2 --memory 4Gi --pods 10 --resource nvidia.com/gpu=2
   $ {{ .Executable }} peer --remote-kubeconfig <provider> --create-resource-slice false
   $ {{ .Executable }} peer --remote-kubeconfig <provider> --create-virtual-node false
+  $ {{ .Executable }} peer --remote-kubeconfig <provider> --multitunnel-server-ports 51841,51842,51843,51844
+  $ {{ .Executable }} peer --remote-kubeconfig <provider> --gw-server-service-type NodePort \
+      --multitunnel-server-ports 51841,51842 --multitunnel-server-nodeports 30001,30002
 `
 
 func newPeerCommand(ctx context.Context, f *factory.Factory) *cobra.Command {
@@ -101,8 +104,15 @@ func newPeerCommand(ctx context.Context, f *factory.Factory) *cobra.Command {
 			nwforge.DefaultGwServerServiceType))
 	cmd.Flags().Int32Var(&options.ServerServicePort, "gw-server-service-port", nwforge.DefaultGwServerPort,
 		fmt.Sprintf("Port of the Gateway Server service. Default: %d", nwforge.DefaultGwServerPort))
+	cmd.Flags().Int32SliceVar(&options.ServerServicePorts, "multitunnel-server-ports", nil,
+		"Ports of the Gateway Server service, one per tunnel (multi-tunnel). "+
+			"When set, it takes precedence over --gw-server-service-port")
 	cmd.Flags().Int32Var(&options.ServerServiceNodePort, "gw-server-service-nodeport", 0,
-		"Force the NodePort of the Gateway Server service. Leave empty to let Kubernetes allocate a random NodePort")
+		"Force the NodePort of the Gateway Server service. With multiple server ports it applies to the first one. "+
+			"Leave empty to let Kubernetes allocate a random NodePort")
+	cmd.Flags().Int32SliceVar(&options.ServerServiceNodePorts, "multitunnel-server-nodeports", nil,
+		"NodePorts of the Gateway Server service, matched in order with --multitunnel-server-ports. "+
+			"If fewer than the server ports are given, the remaining NodePorts are allocated by Kubernetes")
 	cmd.Flags().StringVar(&options.ServerServiceLoadBalancerIP, "gw-server-service-loadbalancerip", "",
 		"IP of the LoadBalancer for the Gateway Server service")
 	cmd.Flags().StringVar(&options.ClientConnectAddress, "gw-client-address", "",
@@ -113,6 +123,9 @@ func newPeerCommand(ctx context.Context, f *factory.Factory) *cobra.Command {
 		"Define the port used by the gateway client to connect to the gateway server. "+
 			"This value overrides the one automatically retrieved by Liqo and it is useful when the server is "+
 			"not directly reachable (e.g. the server is behind a NAT)")
+	cmd.Flags().Int32SliceVar(&options.ClientConnectPorts, "multitunnel-client-ports", nil,
+		"Ports used by the gateway client to connect to the gateway server, matched in order with the server ports. "+
+			"This value overrides the ones automatically retrieved by Liqo (e.g. the server is behind a NAT)")
 	cmd.Flags().IntVar(&options.MTU, "mtu", nwforge.DefaultMTU,
 		fmt.Sprintf("MTU of the Gateway server and client. Default: %d", nwforge.DefaultMTU))
 

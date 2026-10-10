@@ -51,7 +51,9 @@ type GwServerOptions struct {
 	ServiceType       corev1.ServiceType
 	MTU               int
 	Port              int32
+	Ports             []int32
 	NodePort          *int32
+	NodePorts         []int32
 	LoadBalancerIP    *string
 }
 
@@ -93,10 +95,20 @@ func MutateGatewayServer(gwServer *networkingv1beta1.GatewayServer, o *GwServerO
 
 	// Server Endpoint
 	gwServer.Spec.Endpoint = networkingv1beta1.Endpoint{
-		Port:        o.Port,
 		ServiceType: o.ServiceType,
 	}
-	if o.NodePort != nil && *o.NodePort != 0 {
+
+	// Port and Ports are mutually exclusive (CRD XValidation): Ports takes precedence.
+	if len(o.Ports) > 0 {
+		gwServer.Spec.Endpoint.Ports = o.Ports
+	} else {
+		gwServer.Spec.Endpoint.Port = o.Port
+	}
+
+	// NodePort and NodePorts are mutually exclusive (CRD XValidation): NodePorts takes precedence.
+	if len(o.NodePorts) > 0 {
+		gwServer.Spec.Endpoint.NodePorts = o.NodePorts
+	} else if o.NodePort != nil && *o.NodePort != 0 {
 		gwServer.Spec.Endpoint.NodePort = o.NodePort
 	}
 	if o.LoadBalancerIP != nil && *o.LoadBalancerIP != "" {
